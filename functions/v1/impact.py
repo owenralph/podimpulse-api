@@ -6,7 +6,6 @@ import numpy as np
 import statsmodels.api as sm
 import json
 
-
 def impact(req: func.HttpRequest) -> func.HttpResponse:
     logging.info("Received request to calculate episode impact using regression.")
 
