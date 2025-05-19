@@ -26,7 +26,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r podcast_analyser/requirements.txt
 
       - name: Install Azure Functions Core Tools
         run: npm install -g azure-functions-core-tools@4 --unsafe-perm true
@@ -40,3 +40,4 @@ jobs:
 
       - name: Deploy to Azure Function App
         run: func azure functionapp publish PodImpulse --python
+        working-directory: podcast_analyser
