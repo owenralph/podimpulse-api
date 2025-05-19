@@ -15,26 +15,33 @@ app = func.FunctionApp()
 """""""""
 Preparation
 """""""""
+
+@app.function_name(name="initialize")
 @app.route(route="v1/initialize")
 def initialize(req: func.HttpRequest) -> func.HttpResponse:
     return initialize_handler(req)
 
+@app.function_name(name="rss")
 @app.route(route="v1/rss")
 def rss(req: func.HttpRequest) -> func.HttpResponse:
     return rss_handler(req)
 
+@app.function_name(name="ingest")
 @app.route(route="v1/ingest")
 def ingest(req: func.HttpRequest) -> func.HttpResponse:
     return ingest_handler(req)
 
+@app.function_name(name="missing")
 @app.route(route="v1/missing")
 def missing(req: func.HttpRequest) -> func.HttpResponse:
     return missing_handler(req)
 
+@app.function_name(name="trend")
 @app.route(route="v1/trend")
 def trend(req: func.HttpRequest) -> func.HttpResponse:
     return trend_handler(req)
 
+@app.function_name(name="impact")
 @app.route(route="v1/impact")
 def impact(req: func.HttpRequest) -> func.HttpResponse:
     return impact_handler(req)
@@ -42,18 +49,23 @@ def impact(req: func.HttpRequest) -> func.HttpResponse:
 """""""""
 Facebook connection
 """""""""
+
+@app.function_name(name="exchange_user_token")
 @app.route(route="v1/facebook/exchange_user_token")
 def exchange_user_token(req: func.HttpRequest) -> func.HttpResponse:
     return exchange_user_token_handler(req)
 
+@app.function_name(name="get_user_pages")
 @app.route(route="v1/facebook/get_user_pages")
 def get_user_pages(req: func.HttpRequest) -> func.HttpResponse:
     return get_user_pages_handler(req)
 
+@app.function_name(name="get_page_token")
 @app.route(route="v1/facebook/get_page_token")
 def get_page_token(req: func.HttpRequest) -> func.HttpResponse:
     return get_page_token_handler(req)
 
+@app.function_name(name="query_page_analytics")
 @app.route(route="v1/facebook/query_page_analytics")
 def query_page_analytics(req: func.HttpRequest) -> func.HttpResponse:
     return query_page_analytics_handler(req)
