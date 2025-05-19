@@ -1,3 +1,5 @@
+# Test comment
+
 import logging
 import azure.functions as func
 from utils.azure_blob import blob_container_client
