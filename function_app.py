@@ -57,5 +57,3 @@ def get_page_token(req: func.HttpRequest) -> func.HttpResponse:
 @app.route(route="v1/facebook/query_page_analytics")
 def query_page_analytics(req: func.HttpRequest) -> func.HttpResponse:
     return query_page_analytics_handler(req)
-
-# Test comment
