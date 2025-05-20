@@ -37,17 +37,47 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Install Azure Functions Core Tools
-        run: |
-          npm install -g azure-functions-core-tools@4 --unsafe-perm true
-
       # Optional: Add step to run tests here
 
-      - name: Publish to Azure Functions (Oryx local build)
-        run: |
-          func azure functionapp publish PodImpulse --python --build remote
-        env:
-          AzureWebJobsStorage: ${{ secrets.AZUREWEBJOBSSTORAGE }}
-          AzureWebJobsSecretStorageType: files
-          FUNCTIONS_WORKER_RUNTIME: python
-          SCM_DO_BUILD_DURING_DEPLOYMENT: true
+      - name: Zip artifact for deployment
+        run: zip release.zip ./* -r
+
+      - name: Upload artifact for deployment job
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-app
+          path: |
+            release.zip
+            !venv/
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      id-token: write #This is required for requesting the JWT
+      contents: read #This is required for actions/checkout
+
+    steps:
+      - name: Download artifact from build job
+        uses: actions/download-artifact@v4
+        with:
+          name: python-app
+
+      - name: Unzip artifact for deployment
+        run: unzip release.zip     
+        
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_3874BF91F4F0476095311789B0D21AFD }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_29BF4D41BD644ED0A73D5ECFE8BCC744 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_0482068580B74E70B0304F37E0CEEDEC }}
+
+      - name: 'Deploy to Azure Functions'
+        uses: Azure/functions-action@v1
+        id: deploy-to-function
+        with:
+          app-name: 'PodImpulse'
+          slot-name: 'Production'
+          package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
+          
