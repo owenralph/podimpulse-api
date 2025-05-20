@@ -41,13 +41,9 @@ jobs:
         run: |
           npm install -g azure-functions-core-tools@4 --unsafe-perm true
 
-      - name: Azure Functions Build (func pack)
-        run: |
-          func pack --build-option '--platform linux --python'
-
       # Optional: Add step to run tests here
 
-      - name: Upload artifact for deployment job
+      - name: Upload source for deployment (remote build)
         uses: actions/upload-artifact@v4
         with:
           name: python-app
@@ -75,10 +71,11 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_F370C3E9E73B42C1831E454470C3EF8D }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_22623D5C2B14456D928DA72831CE4E8B }}
 
-      - name: 'Deploy to Azure Functions'
+      - name: 'Deploy to Azure Functions (remote build)'
         uses: Azure/functions-action@v1
         id: deploy-to-function
         with:
           app-name: 'PodImpulse'
           slot-name: 'Production'
           package: .
+          scm-do-build-during-deployment: true
