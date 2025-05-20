@@ -8,9 +8,12 @@ from utils.missing_episodes import mark_potential_missing_episodes
 from utils.constants import ERROR_METHOD_NOT_ALLOWED, ERROR_MISSING_CSV
 from utils.episode_counts import add_episode_counts_and_titles
 from utils.retry import retry_with_backoff
+from utils.seasonality import add_seasonality_predictors
 import json
 import requests
 import io
+import pandas as pd
+import numpy as np
 from typing import Optional
 
 def ingest(req: func.HttpRequest) -> func.HttpResponse:
@@ -118,6 +121,13 @@ def ingest(req: func.HttpRequest) -> func.HttpResponse:
         except Exception as e:
             logging.error(f"Failed to mark potential missing episodes: {e}", exc_info=True)
             return func.HttpResponse("Failed to mark potential missing episodes.", status_code=500)
+
+        # Add seasonality predictors to the DataFrame
+        try:
+            downloads_df = add_seasonality_predictors(downloads_df, date_col='Date')
+        except Exception as e:
+            logging.error(f"Failed to add seasonality predictors: {e}", exc_info=True)
+            return func.HttpResponse("Failed to add seasonality predictors.", status_code=500)
 
         # Convert to JSON and prepare final blob
         try:

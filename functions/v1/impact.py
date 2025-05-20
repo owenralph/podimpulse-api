@@ -2,11 +2,14 @@ import logging
 import azure.functions as func
 from utils.azure_blob import blob_container_client
 from utils.retry import retry_with_backoff
+from utils.regression import load_json_from_blob, add_lagged_episode_release_columns, summarize_impact_results
 import pandas as pd
 import numpy as np
 import statsmodels.api as sm
 import json
 from typing import Optional
+from sklearn.linear_model import RidgeCV
+from sklearn.preprocessing import StandardScaler
 
 def impact(req: func.HttpRequest) -> func.HttpResponse:
     """
@@ -36,17 +39,7 @@ def impact(req: func.HttpRequest) -> func.HttpResponse:
 
         # Retrieve JSON from Blob Storage with retry
         try:
-            def load_blob():
-                blob_name = f"{token}.json"
-                blob_client = blob_container_client.get_blob_client(blob_name)
-                return blob_client.download_blob().readall().decode('utf-8')
-            json_data = retry_with_backoff(
-                load_blob,
-                exceptions=(Exception,),
-                max_attempts=3,
-                initial_delay=1.0,
-                backoff_factor=2.0
-            )()
+            json_data = load_json_from_blob(token)
         except Exception as e:
             error_message = f"Error retrieving data for token {token}: {e}"
             logging.error(error_message, exc_info=True)
@@ -65,9 +58,7 @@ def impact(req: func.HttpRequest) -> func.HttpResponse:
         # Add columns for episodes released in the past 0–7 days
         try:
             max_days = 7
-            for i in range(max_days + 1):
-                col_name = f"Episodes released today-{i}"
-                df[col_name] = df['Episodes Released'].shift(i).fillna(0)
+            df = add_lagged_episode_release_columns(df, max_days=max_days)
         except Exception as e:
             logging.error(f"Error adding lag columns: {e}", exc_info=True)
             return func.HttpResponse("Error preparing features for regression.", status_code=500)
@@ -75,55 +66,70 @@ def impact(req: func.HttpRequest) -> func.HttpResponse:
         # Prepare predictors (X) and response (y)
         try:
             predictors = [f"Episodes released today-{i}" for i in range(max_days + 1)]
+            # Remove predictors with zero variance
+            predictors = [col for col in predictors if df[col].nunique() > 1]
+            df = df.dropna(subset=predictors + ['Downloads'])
             X = df[predictors]
             y = df['Downloads']
         except Exception as e:
             logging.error(f"Error preparing predictors/response: {e}", exc_info=True)
             return func.HttpResponse("Error preparing regression data.", status_code=500)
 
-        # Fit linear regression model
-        try:
-            X = sm.add_constant(X)  # Add intercept
-            model = sm.OLS(y, X).fit()
-            logging.info("Regression Model Summary:\n" + str(model.summary()))
-        except Exception as e:
-            logging.error(f"Error fitting regression model: {e}", exc_info=True)
-            return func.HttpResponse("Error fitting regression model.", status_code=500)
+        # Feature scaling
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
 
-        # Analyze results
+        # Hyperparameter tuning for Ridge (RidgeCV)
+        alphas = np.logspace(-3, 3, 20)
+        ridge_cv = RidgeCV(alphas=alphas, cv=5, scoring='r2')
+        ridge_cv.fit(X_scaled, y)
+        best_alpha = ridge_cv.alpha_
+
+        # Outlier detection and removal (standardized residuals > 3)
+        y_pred_all = ridge_cv.predict(X_scaled)
+        residuals = y - y_pred_all
+        std_residuals = (residuals - residuals.mean()) / residuals.std()
+        mask = std_residuals.abs() <= 3
+        X_scaled = X_scaled[mask]
+        y = y[mask]
+        df_masked = df[mask].copy()
+
+        # Time-aware train/test split
+        df_masked['Date'] = pd.to_datetime(df_masked['Date'])
+        df_masked = df_masked.sort_values('Date')
+        split_idx = int(len(df_masked) * 0.8)
+        X_train = X_scaled[:split_idx]
+        X_test = X_scaled[split_idx:]
+        y_train = y.iloc[:split_idx]
+        y_test = y.iloc[split_idx:]
+
+        # Fit final Ridge model with best alpha
+        model = RidgeCV(alphas=[best_alpha], cv=None)
+        model.fit(X_train, y_train)
+        score = model.score(X_test, y_test)
+        coefs = dict(zip(X.columns, model.coef_))
+        intercept = model.intercept_
+        y_pred = model.predict(X_test)
+
+        # Analyze results (keep original logic for impact summary)
         try:
             results = []
             significance_level = 0.05
             for i, predictor in enumerate(predictors):
-                coef = model.params[predictor]
-                p_value = model.pvalues[predictor]
-                if p_value < significance_level:
-                    results.append({
-                        'day_offset': i,
-                        'impact': coef,
-                        'p_value': p_value
-                    })
-                else:
-                    break
+                coef = coefs.get(predictor, 0.0)
+                # Ridge does not provide p-values; just report all coefficients
+                results.append({
+                    'day_offset': i,
+                    'impact': coef,
+                    'p_value': None
+                })
         except Exception as e:
             logging.error(f"Error analyzing regression results: {e}", exc_info=True)
             return func.HttpResponse("Error analyzing regression results.", status_code=500)
 
         # Summarize results
         try:
-            if results:
-                days_of_impact = len(results)
-                average_impact = float(np.mean([result['impact'] for result in results]))
-                impact_per_day = [
-                    {
-                        'day_offset': int(result['day_offset']),
-                        'impact': float(result['impact'])
-                    } for result in results
-                ]
-            else:
-                days_of_impact = 0
-                average_impact = 0.0
-                impact_per_day = []
+            days_of_impact, average_impact, impact_per_day = summarize_impact_results(results)
         except Exception as e:
             logging.error(f"Error summarizing regression results: {e}", exc_info=True)
             return func.HttpResponse("Error summarizing regression results.", status_code=500)
@@ -133,7 +139,13 @@ def impact(req: func.HttpRequest) -> func.HttpResponse:
             response = {
                 'days_of_impact': days_of_impact,
                 'average_impact': average_impact,
-                'impact_per_day': impact_per_day
+                'impact_per_day': impact_per_day,
+                'score': score,
+                'best_alpha': best_alpha,
+                'n_train': len(X_train),
+                'n_test': len(X_test),
+                'predictions': y_pred.tolist(),
+                'actuals': y_test.tolist(),
             }
             return func.HttpResponse(
                 json.dumps(response),
