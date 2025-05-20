@@ -1,12 +1,16 @@
-import pandas as pd
 from typing import List
+import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
 from kneed import KneeLocator
 import numpy as np
 
 
-def add_episode_counts_and_titles(downloads_df: pd.DataFrame, episode_data: pd.DataFrame, max_clusters: int = 10) -> pd.DataFrame:
+def add_episode_counts_and_titles(
+    downloads_df: pd.DataFrame,
+    episode_data: pd.DataFrame,
+    max_clusters: int = 10
+) -> pd.DataFrame:
     """
     Adds episode release counts, titles, and clusters to the download DataFrame.
 

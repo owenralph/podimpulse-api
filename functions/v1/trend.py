@@ -2,13 +2,22 @@ import azure.functions as func
 import logging
 from azure.storage.blob import BlobServiceClient
 from utils.azure_blob import blob_container_client
+from utils.retry import retry_with_backoff
 from io import StringIO
 import pandas as pd
 import numpy as np
 import json
+from typing import Optional
 
 
 def trend(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Azure Function endpoint to calculate trend with rolling average and line of best fit.
+    Args:
+        req (func.HttpRequest): The HTTP request object.
+    Returns:
+        func.HttpResponse: The HTTP response with trend data or error message.
+    """
     logging.info("Received request to calculate trend with rolling average and line of best fit.")
 
     try:
@@ -21,8 +30,8 @@ def trend(req: func.HttpRequest) -> func.HttpResponse:
             )
 
         # Extract and validate inputs
-        token = req.params.get('token')
-        days = req.params.get('days')
+        token: Optional[str] = req.params.get('token')
+        days: Optional[str] = req.params.get('days')
 
         if not token:
             error_message = "Missing 'token' in the request."
@@ -35,23 +44,31 @@ def trend(req: func.HttpRequest) -> func.HttpResponse:
             return func.HttpResponse(error_message, status_code=400)
 
         try:
-            days = int(days)
-            if days <= 0:
+            days_int = int(days)
+            if days_int <= 0:
                 raise ValueError("The 'days' parameter must be a positive integer.")
         except ValueError as e:
             error_message = f"Invalid 'days' parameter: {e}"
             logging.error(error_message)
             return func.HttpResponse(error_message, status_code=400)
 
-        # Retrieve JSON from Blob Storage
+        # Retrieve JSON from Blob Storage with retry
         try:
-            blob_name = f"{token}.json"
-            blob_client = blob_container_client.get_blob_client(blob_name)
-            json_data = blob_client.download_blob().readall().decode('utf-8')
+            def load_blob():
+                blob_name = f"{token}.json"
+                blob_client = blob_container_client.get_blob_client(blob_name)
+                return blob_client.download_blob().readall().decode('utf-8')
+            json_data = retry_with_backoff(
+                load_blob,
+                exceptions=(Exception,),
+                max_attempts=3,
+                initial_delay=1.0,
+                backoff_factor=2.0
+            )()
         except Exception as e:
             error_message = f"Error retrieving data for token {token}: {e}"
             logging.error(error_message, exc_info=True)
-            return func.HttpResponse(error_message, status_code=404)
+            return func.HttpResponse("Error retrieving data from storage.", status_code=404)
 
         # Parse JSON into DataFrame
         try:
@@ -61,14 +78,12 @@ def trend(req: func.HttpRequest) -> func.HttpResponse:
         except Exception as e:
             error_message = f"Error parsing dataset: {e}"
             logging.error(error_message, exc_info=True)
-            return func.HttpResponse(error_message, status_code=400)
+            return func.HttpResponse("Error parsing dataset.", status_code=400)
 
         # Calculate rolling average
         try:
-            df['Rolling Average'] = df['Downloads'].rolling(window=days).mean()
+            df['Rolling Average'] = df['Downloads'].rolling(window=days_int).mean()
             result_df = df[['Date', 'Rolling Average']].dropna()
-
-            # Rename columns for JSON output
             result_df.rename(columns={
                 'Date': 'date',
                 'Rolling Average': 'rolling_average'
@@ -76,7 +91,7 @@ def trend(req: func.HttpRequest) -> func.HttpResponse:
         except Exception as e:
             error_message = f"Error calculating rolling average: {e}"
             logging.error(error_message, exc_info=True)
-            return func.HttpResponse(error_message, status_code=500)
+            return func.HttpResponse("Error calculating rolling average.", status_code=500)
 
         # Calculate the line of best fit based on the rolling average
         try:
@@ -87,10 +102,14 @@ def trend(req: func.HttpRequest) -> func.HttpResponse:
         except Exception as e:
             error_message = f"Error calculating line of best fit: {e}"
             logging.error(error_message, exc_info=True)
-            return func.HttpResponse(error_message, status_code=500)
+            return func.HttpResponse("Error calculating line of best fit.", status_code=500)
 
         # Convert Timestamps to ISO format
-        result_df['date'] = result_df['date'].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+        try:
+            result_df['date'] = result_df['date'].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+        except Exception as e:
+            logging.error(f"Error formatting dates: {e}", exc_info=True)
+            return func.HttpResponse("Error formatting dates.", status_code=500)
 
         # Prepare JSON response
         try:
@@ -98,8 +117,8 @@ def trend(req: func.HttpRequest) -> func.HttpResponse:
             response = {
                 "trend_data": trend_data,
                 "trend_line": {
-                    "slope": slope,
-                    "intercept": intercept
+                    "slope": float(slope),
+                    "intercept": float(intercept)
                 }
             }
             response_json = json.dumps(response)
@@ -112,11 +131,11 @@ def trend(req: func.HttpRequest) -> func.HttpResponse:
         except Exception as e:
             error_message = f"Error preparing JSON response: {e}"
             logging.error(error_message, exc_info=True)
-            return func.HttpResponse(error_message, status_code=500)
+            return func.HttpResponse("Error preparing JSON response.", status_code=500)
 
     except Exception as e:
         logging.error(f"Unexpected error: {e}", exc_info=True)
         return func.HttpResponse(
-            f"An unexpected error occurred: {str(e)}",
+            "An unexpected error occurred.",
             status_code=500
         )

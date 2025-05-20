@@ -1,7 +1,11 @@
 import pandas as pd
+from typing import Any
 
 
-def mark_potential_missing_episodes(downloads_df: pd.DataFrame, episode_dates: pd.Series) -> pd.DataFrame:
+def mark_potential_missing_episodes(
+    downloads_df: pd.DataFrame,
+    episode_dates: pd.Series
+) -> pd.DataFrame:
     """
     Marks spikes as potential missing episodes if they don't match any episode release dates
     and there are no episodes released on that date. Also adds a deduced episodes released predictor.
@@ -13,6 +17,9 @@ def mark_potential_missing_episodes(downloads_df: pd.DataFrame, episode_dates: p
 
     Returns:
         pd.DataFrame: Updated DataFrame with 'potential_missing_episode' and 'deduced_episodes_released' columns.
+
+    Raises:
+        ValueError: If required columns are missing.
     """
     if 'is_spike' not in downloads_df.columns or 'is_anomalous' not in downloads_df.columns or 'Episodes Released' not in downloads_df.columns:
         raise ValueError("The dataset must have 'is_spike', 'is_anomalous', and 'Episodes Released' columns.")

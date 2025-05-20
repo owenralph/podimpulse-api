@@ -5,6 +5,7 @@ from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
 from kneed import KneeLocator
 import logging
+from typing import Any
 
 
 def determine_optimal_clusters(features: np.ndarray, max_clusters: int = 10) -> int:
@@ -85,6 +86,16 @@ def characterize_clusters(spike_data: pd.DataFrame) -> pd.DataFrame:
 
 
 def perform_spike_clustering(downloads_df: pd.DataFrame, max_clusters: int = 10) -> pd.DataFrame:
+    """
+    Performs spike detection and clustering on the downloads DataFrame.
+    
+    Args:
+        downloads_df (pd.DataFrame): DataFrame with download data.
+        max_clusters (int): Maximum number of clusters to consider.
+    
+    Returns:
+        pd.DataFrame: DataFrame with spike and cluster information.
+    """
     # Ensure Date is in datetime format
     downloads_df['Date'] = pd.to_datetime(downloads_df['Date'])
 
