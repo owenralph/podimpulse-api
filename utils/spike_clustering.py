@@ -118,7 +118,6 @@ def perform_spike_clustering(downloads_df: pd.DataFrame, max_clusters: int = 10)
     spike_data = stable_data[stable_data['is_spike']].copy()
     if spike_data.empty:
         logging.warning("No spikes detected. Returning original dataset.")
-        downloads_df['spike_cluster'] = np.nan
         downloads_df['is_anomalous'] = False
         downloads_df['is_spike'] = False
         return downloads_df
@@ -142,18 +141,22 @@ def perform_spike_clustering(downloads_df: pd.DataFrame, max_clusters: int = 10)
     kmeans = KMeans(n_clusters=optimal_clusters, random_state=42)
     spike_data['spike_cluster'] = kmeans.fit_predict(scaled_features)
 
-    # Merge the cluster labels back into the original DataFrame
+    # One-hot encode the spike_cluster column for spikes only
+    cluster_dummies = pd.get_dummies(spike_data['spike_cluster'], prefix='spike_cluster')
+    spike_data = pd.concat([spike_data[['Date', 'is_anomalous', 'is_spike']], cluster_dummies], axis=1)
+
+    # Merge the one-hot columns and spike flags back into the original DataFrame
     downloads_df = downloads_df.merge(
-        spike_data[['Date', 'spike_cluster', 'is_anomalous', 'is_spike']],
+        spike_data,
         on='Date',
         how='left'
     )
 
     downloads_df['is_spike'] = downloads_df['is_spike'].fillna(False)
     downloads_df['is_anomalous'] = downloads_df['is_anomalous'].fillna(False)
-
-    # One-hot encode the spike_cluster column
-    cluster_dummies = pd.get_dummies(downloads_df['spike_cluster'], prefix='spike_cluster')
-    downloads_df = pd.concat([downloads_df, cluster_dummies], axis=1)
+    # Fill NaN in one-hot columns with 0 and ensure integer type
+    for col in downloads_df.columns:
+        if col.startswith('spike_cluster_'):
+            downloads_df[col] = downloads_df[col].fillna(0).astype(int)
 
     return downloads_df

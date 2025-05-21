@@ -47,7 +47,10 @@ def initialize(req: func.HttpRequest) -> func.HttpResponse:
 
         # Return the instance ID in a JSON response
         try:
-            response_data = {"instance_id": instance_id}
+            response_data = {
+                "message": "Instance initialized successfully.",
+                "result": {"instance_id": instance_id}
+            }
             total_duration = time.time() - start_time
             logging.info(f"Total function execution time: {total_duration:.2f} seconds.")
             return func.HttpResponse(

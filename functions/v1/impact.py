@@ -137,15 +137,21 @@ def impact(req: func.HttpRequest) -> func.HttpResponse:
         # Prepare response
         try:
             response = {
-                'days_of_impact': days_of_impact,
-                'average_impact': average_impact,
-                'impact_per_day': impact_per_day,
-                'score': score,
-                'best_alpha': best_alpha,
-                'n_train': len(X_train),
-                'n_test': len(X_test),
-                'predictions': y_pred.tolist(),
-                'actuals': y_test.tolist(),
+                'message': 'Impact analysis completed successfully.',
+                'result': {
+                    'days_of_impact': days_of_impact,
+                    'average_impact': average_impact,
+                    'impact_per_day': impact_per_day,
+                    'score': score,
+                    'best_alpha': best_alpha,
+                    'n_train': len(X_train),
+                    'n_test': len(X_test),
+                    'predictions': y_pred.tolist(),
+                    'actuals': y_test.tolist(),
+                    'intercept': float(intercept),
+                    'coefficients': coefs,
+                    'selected_features': predictors
+                }
             }
             return func.HttpResponse(
                 json.dumps(response),

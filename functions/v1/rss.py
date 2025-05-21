@@ -25,7 +25,10 @@ def rss(req: func.HttpRequest) -> func.HttpResponse:
 
                 if not instance_id or not rss_url:
                     logging.error("Missing instance_id or rss_url in request body.")
-                    return func.HttpResponse("Missing instance_id or rss_url.", status_code=400)
+                    return func.HttpResponse(json.dumps({
+                        "message": "Missing instance_id or rss_url.",
+                        "result": None
+                    }), status_code=400)
 
                 # Load existing blob data with retry
                 try:
@@ -39,7 +42,10 @@ def rss(req: func.HttpRequest) -> func.HttpResponse:
                     json_data = json.loads(blob_data)
                 except Exception as e:
                     logging.error(f"Failed to load blob data: {e}", exc_info=True)
-                    return func.HttpResponse("Failed to load blob data.", status_code=500)
+                    return func.HttpResponse(json.dumps({
+                        "message": "Failed to load blob data.",
+                        "result": None
+                    }), status_code=500)
 
                 # Update or create the rss_url property
                 json_data["rss_url"] = rss_url
@@ -55,10 +61,16 @@ def rss(req: func.HttpRequest) -> func.HttpResponse:
                     )()
                 except Exception as e:
                     logging.error(f"Failed to save blob data: {e}", exc_info=True)
-                    return func.HttpResponse("Failed to save blob data.", status_code=500)
+                    return func.HttpResponse(json.dumps({
+                        "message": "Failed to save blob data.",
+                        "result": None
+                    }), status_code=500)
 
                 return func.HttpResponse(
-                    json.dumps({"message": "RSS feed URL updated successfully.", "instance_id": instance_id, "rss_url": rss_url}),
+                    json.dumps({
+                        "message": "RSS feed URL updated successfully.",
+                        "result": {"instance_id": instance_id, "rss_url": rss_url}
+                    }),
                     mimetype="application/json",
                     status_code=200
                 )
@@ -66,7 +78,10 @@ def rss(req: func.HttpRequest) -> func.HttpResponse:
             except Exception as e:
                 logging.error(f"Failed to update RSS feed: {e}", exc_info=True)
                 return func.HttpResponse(
-                    "Failed to update RSS feed.",
+                    json.dumps({
+                        "message": "Failed to update RSS feed.",
+                        "result": None
+                    }),
                     status_code=500
                 )
 
@@ -76,7 +91,10 @@ def rss(req: func.HttpRequest) -> func.HttpResponse:
 
                 if not instance_id:
                     logging.error("Missing instance_id in query parameters.")
-                    return func.HttpResponse("Missing instance_id.", status_code=400)
+                    return func.HttpResponse(json.dumps({
+                        "message": "Missing instance_id.",
+                        "result": None
+                    }), status_code=400)
 
                 # Load blob data with retry
                 try:
@@ -90,14 +108,23 @@ def rss(req: func.HttpRequest) -> func.HttpResponse:
                     json_data = json.loads(blob_data)
                 except Exception as e:
                     logging.error(f"Failed to load blob data: {e}", exc_info=True)
-                    return func.HttpResponse("Failed to load blob data.", status_code=500)
+                    return func.HttpResponse(json.dumps({
+                        "message": "Failed to load blob data.",
+                        "result": None
+                    }), status_code=500)
 
                 if "rss_url" not in json_data:
                     logging.error("RSS feed URL not set.")
-                    return func.HttpResponse("RSS feed URL not set.", status_code=404)
+                    return func.HttpResponse(json.dumps({
+                        "message": "RSS feed URL not set.",
+                        "result": None
+                    }), status_code=404)
 
                 return func.HttpResponse(
-                    json.dumps({"rss_url": json_data["rss_url"]}),
+                    json.dumps({
+                        "message": "RSS feed URL retrieved successfully.",
+                        "result": {"rss_url": json_data["rss_url"]}
+                    }),
                     mimetype="application/json",
                     status_code=200
                 )
@@ -105,17 +132,26 @@ def rss(req: func.HttpRequest) -> func.HttpResponse:
             except Exception as e:
                 logging.error(f"Failed to retrieve RSS feed: {e}", exc_info=True)
                 return func.HttpResponse(
-                    "Failed to retrieve RSS feed.",
+                    json.dumps({
+                        "message": "Failed to retrieve RSS feed.",
+                        "result": None
+                    }),
                     status_code=500
                 )
 
         else:
             logging.error(f"Invalid HTTP method: {req.method}")
-            return func.HttpResponse("Method Not Allowed", status_code=405)
+            return func.HttpResponse(json.dumps({
+                "message": "Method Not Allowed",
+                "result": None
+            }), status_code=405)
 
     except Exception as e:
         logging.error(f"Unexpected error: {e}", exc_info=True)
         return func.HttpResponse(
-            "An unexpected error occurred.",
+            json.dumps({
+                "message": "An unexpected error occurred.",
+                "result": None
+            }),
             status_code=500
         )

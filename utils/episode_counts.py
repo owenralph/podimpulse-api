@@ -4,6 +4,8 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
 from kneed import KneeLocator
 import numpy as np
+import pytz
+from datetime import timezone
 
 
 def add_episode_counts_and_titles(
@@ -22,16 +24,24 @@ def add_episode_counts_and_titles(
     Returns:
         pd.DataFrame: Updated DataFrame with episode counts, titles, and cluster information.
     """
-    # Ensure both DataFrames have the 'Date' column as datetime64[ns]
-    downloads_df['Date'] = pd.to_datetime(downloads_df['Date'])
-    episode_data['Date'] = pd.to_datetime(episode_data['Date'])
+    # Ensure both DataFrames have the 'Date' column as datetime64[ns] with UTC
+    downloads_df['Date'] = pd.to_datetime(downloads_df['Date'], utc=True)
+    episode_data['Date'] = pd.to_datetime(episode_data['Date'], utc=True)
 
-    # Group episode titles by date
-    episode_titles_grouped = episode_data.groupby("Date")["Title"].apply(list).reset_index()
+    # Convert RSS episode dates to UK local time (Europe/London) and extract local date
+    uk_tz = pytz.timezone('Europe/London')
+    episode_data['Local_Date'] = episode_data['Date'].dt.tz_convert(uk_tz).dt.date
+    downloads_df['Local_Date'] = downloads_df['Date'].dt.tz_convert(uk_tz).dt.date
+
+    # Group episode titles by local date
+    episode_titles_grouped = episode_data.groupby("Local_Date")["Title"].apply(list).reset_index()
     episode_titles_grouped.rename(columns={"Title": "Episode_Titles"}, inplace=True)
-
-    # Add episode counts to the grouped DataFrame
     episode_titles_grouped['Episodes Released'] = episode_titles_grouped['Episode_Titles'].apply(len)
+
+    # Merge episode counts/titles into downloads_df on Local_Date
+    downloads_df = downloads_df.merge(episode_titles_grouped, on='Local_Date', how='left')
+    downloads_df['Episodes Released'] = downloads_df['Episodes Released'].fillna(0).astype(int)
+    downloads_df['Episode_Titles'] = downloads_df['Episode_Titles'].apply(lambda x: x if isinstance(x, list) else [])
 
     # Flatten titles for clustering
     flattened_titles = episode_data["Title"].dropna().unique()
@@ -58,18 +68,11 @@ def add_episode_counts_and_titles(
     title_cluster_map = {title: cluster for title, cluster in zip(flattened_titles, title_clusters)}
 
     # Add clusters to episode titles
-    episode_titles_grouped["Clustered_Episode_Titles"] = episode_titles_grouped["Episode_Titles"].apply(
+    downloads_df["Clustered_Episode_Titles"] = downloads_df["Episode_Titles"].apply(
         lambda titles: [{"title": title, "cluster": title_cluster_map.get(title, -1)} for title in titles]
     )
 
-    # Merge episode data with download data
-    downloads_df = downloads_df.merge(episode_titles_grouped, on="Date", how="left")
-
-    # Fill NaN with defaults for dates without episode releases
-    downloads_df["Episode_Titles"] = downloads_df["Episode_Titles"].apply(lambda x: x if isinstance(x, list) else [])
-    downloads_df["Clustered_Episode_Titles"] = downloads_df["Clustered_Episode_Titles"].apply(
-        lambda x: x if isinstance(x, list) else []
-    )
-    downloads_df["Episodes Released"] = downloads_df["Episodes Released"].fillna(0).astype(int)
+    # Remove Local_Date column before returning (optional, for cleanliness)
+    downloads_df = downloads_df.drop(columns=['Local_Date'])
 
     return downloads_df

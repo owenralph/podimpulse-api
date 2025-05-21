@@ -24,10 +24,10 @@ def trend(req: func.HttpRequest) -> func.HttpResponse:
         # Validate HTTP method
         if req.method != "GET":
             logging.error(f"Invalid HTTP method: {req.method}")
-            return func.HttpResponse(
-                "Invalid HTTP method. Only GET requests are allowed.",
-                status_code=405
-            )
+            return func.HttpResponse(json.dumps({
+                "message": "Invalid HTTP method. Only GET requests are allowed.",
+                "result": None
+            }), status_code=405)
 
         # Extract and validate inputs
         token: Optional[str] = req.params.get('token')
@@ -36,12 +36,18 @@ def trend(req: func.HttpRequest) -> func.HttpResponse:
         if not token:
             error_message = "Missing 'token' in the request."
             logging.error(error_message)
-            return func.HttpResponse(error_message, status_code=400)
+            return func.HttpResponse(json.dumps({
+                "message": error_message,
+                "result": None
+            }), status_code=400)
 
         if not days:
             error_message = "Missing 'days' in the request."
             logging.error(error_message)
-            return func.HttpResponse(error_message, status_code=400)
+            return func.HttpResponse(json.dumps({
+                "message": error_message,
+                "result": None
+            }), status_code=400)
 
         try:
             days_int = int(days)
@@ -50,7 +56,10 @@ def trend(req: func.HttpRequest) -> func.HttpResponse:
         except ValueError as e:
             error_message = f"Invalid 'days' parameter: {e}"
             logging.error(error_message)
-            return func.HttpResponse(error_message, status_code=400)
+            return func.HttpResponse(json.dumps({
+                "message": error_message,
+                "result": None
+            }), status_code=400)
 
         # Retrieve JSON from Blob Storage with retry
         try:
@@ -68,7 +77,10 @@ def trend(req: func.HttpRequest) -> func.HttpResponse:
         except Exception as e:
             error_message = f"Error retrieving data for token {token}: {e}"
             logging.error(error_message, exc_info=True)
-            return func.HttpResponse("Error retrieving data from storage.", status_code=404)
+            return func.HttpResponse(json.dumps({
+                "message": "Error retrieving data from storage.",
+                "result": None
+            }), status_code=404)
 
         # Parse JSON into DataFrame
         try:
@@ -78,7 +90,10 @@ def trend(req: func.HttpRequest) -> func.HttpResponse:
         except Exception as e:
             error_message = f"Error parsing dataset: {e}"
             logging.error(error_message, exc_info=True)
-            return func.HttpResponse("Error parsing dataset.", status_code=400)
+            return func.HttpResponse(json.dumps({
+                "message": "Error parsing dataset.",
+                "result": None
+            }), status_code=400)
 
         # Calculate rolling average
         try:
@@ -91,7 +106,10 @@ def trend(req: func.HttpRequest) -> func.HttpResponse:
         except Exception as e:
             error_message = f"Error calculating rolling average: {e}"
             logging.error(error_message, exc_info=True)
-            return func.HttpResponse("Error calculating rolling average.", status_code=500)
+            return func.HttpResponse(json.dumps({
+                "message": "Error calculating rolling average.",
+                "result": None
+            }), status_code=500)
 
         # Calculate the line of best fit based on the rolling average
         try:
@@ -102,23 +120,32 @@ def trend(req: func.HttpRequest) -> func.HttpResponse:
         except Exception as e:
             error_message = f"Error calculating line of best fit: {e}"
             logging.error(error_message, exc_info=True)
-            return func.HttpResponse("Error calculating line of best fit.", status_code=500)
+            return func.HttpResponse(json.dumps({
+                "message": "Error calculating line of best fit.",
+                "result": None
+            }), status_code=500)
 
         # Convert Timestamps to ISO format
         try:
             result_df['date'] = result_df['date'].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
         except Exception as e:
             logging.error(f"Error formatting dates: {e}", exc_info=True)
-            return func.HttpResponse("Error formatting dates.", status_code=500)
+            return func.HttpResponse(json.dumps({
+                "message": "Error formatting dates.",
+                "result": None
+            }), status_code=500)
 
         # Prepare JSON response
         try:
             trend_data = result_df[['date', 'rolling_average', 'line_of_best_fit']].to_dict(orient="records")
             response = {
-                "trend_data": trend_data,
-                "trend_line": {
-                    "slope": float(slope),
-                    "intercept": float(intercept)
+                "message": "Trend calculation completed successfully.",
+                "result": {
+                    "trend_data": trend_data,
+                    "trend_line": {
+                        "slope": float(slope),
+                        "intercept": float(intercept)
+                    }
                 }
             }
             response_json = json.dumps(response)
@@ -131,11 +158,14 @@ def trend(req: func.HttpRequest) -> func.HttpResponse:
         except Exception as e:
             error_message = f"Error preparing JSON response: {e}"
             logging.error(error_message, exc_info=True)
-            return func.HttpResponse("Error preparing JSON response.", status_code=500)
+            return func.HttpResponse(json.dumps({
+                "message": "Error preparing JSON response.",
+                "result": None
+            }), status_code=500)
 
     except Exception as e:
         logging.error(f"Unexpected error: {e}", exc_info=True)
-        return func.HttpResponse(
-            "An unexpected error occurred.",
-            status_code=500
-        )
+        return func.HttpResponse(json.dumps({
+            "message": "An unexpected error occurred.",
+            "result": None
+        }), status_code=500)

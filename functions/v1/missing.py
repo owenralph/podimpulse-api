@@ -67,9 +67,14 @@ def missing(req: func.HttpRequest) -> func.HttpResponse:
 
         if req.method == "GET":
             try:
-                missing_episodes = downloads_df[downloads_df['potential_missing_episode']].to_dict(orient="records")
+                # Return only the dates of missing episodes (as in ingest)
+                missing_dates = downloads_df.loc[downloads_df['potential_missing_episode'], 'Date']
+                missing_dates_iso = pd.to_datetime(missing_dates).dt.strftime('%Y-%m-%d').tolist()
                 return func.HttpResponse(
-                    json.dumps(missing_episodes),
+                    json.dumps({
+                        "message": "Missing episodes retrieved successfully.",
+                        "result": {"potential_missing_episodes": missing_dates_iso}
+                    }),
                     mimetype="application/json",
                     status_code=200,
                 )
@@ -83,6 +88,12 @@ def missing(req: func.HttpRequest) -> func.HttpResponse:
             try:
                 body = req.get_json()
                 updates = body.get("updates")
+                # Sly accept-all: if updates == 'ALL', accept all current potential missing episodes
+                if updates == 'ALL':
+                    updates = [
+                        {'date': d, 'accepted': True}
+                        for d in pd.to_datetime(downloads_df.loc[downloads_df['potential_missing_episode'], 'Date']).dt.strftime('%Y-%m-%d').tolist()
+                    ]
                 if not updates or not isinstance(updates, list):
                     logging.error("Invalid updates format.")
                     return func.HttpResponse(
@@ -94,6 +105,8 @@ def missing(req: func.HttpRequest) -> func.HttpResponse:
 
             # Process updates
             try:
+                # Ensure 'Date' column is datetime
+                downloads_df['Date'] = pd.to_datetime(downloads_df['Date'])
                 for update in updates:
                     date = update.get("date")
                     accepted = update.get("accepted")
@@ -107,7 +120,17 @@ def missing(req: func.HttpRequest) -> func.HttpResponse:
                             status_code=400,
                         )
 
-                    downloads_df.loc[downloads_df['Date'] == date, 'accepted'] = accepted
+                    # Match on date only (ignore time)
+                    mask = downloads_df['Date'].dt.strftime('%Y-%m-%d') == date
+                    downloads_df.loc[mask, 'accepted'] = accepted
+                    if accepted:
+                        if 'Episodes Released' in downloads_df.columns:
+                            downloads_df.loc[mask, 'Episodes Released'] = (
+                                downloads_df.loc[mask, 'Episodes Released'].fillna(0).astype(int) + 1
+                            )
+                        else:
+                            downloads_df.loc[mask, 'Episodes Released'] = 1
+                        downloads_df.loc[mask, 'potential_missing_episode'] = False
             except Exception as e:
                 logging.error(f"Failed to process updates: {e}", exc_info=True)
                 return func.HttpResponse(
@@ -116,6 +139,9 @@ def missing(req: func.HttpRequest) -> func.HttpResponse:
 
             # Save updated blob data with retry
             try:
+                # Convert 'Date' column to ISO string for JSON serialization
+                if 'Date' in downloads_df.columns:
+                    downloads_df['Date'] = downloads_df['Date'].dt.strftime('%Y-%m-%dT%H:%M:%S')
                 json_data["data"] = downloads_df.to_dict(orient="records")
                 retry_with_backoff(
                     lambda: save_to_blob_storage(json.dumps(json_data), instance_id),
@@ -130,11 +156,26 @@ def missing(req: func.HttpRequest) -> func.HttpResponse:
                     "Failed to save blob data.", status_code=500
                 )
 
-            return func.HttpResponse(
-                json.dumps({"message": "Updates applied successfully."}),
-                mimetype="application/json",
-                status_code=200,
-            )
+            # Return the full updated dataframe in the same format as ingest
+            try:
+                response = {
+                    "message": "Updates applied successfully.",
+                    "result": {
+                        "instance_id": instance_id,
+                        "data": downloads_df.to_dict(orient="records")
+                    }
+                }
+                return func.HttpResponse(
+                    json.dumps(response),
+                    mimetype="application/json",
+                    status_code=200
+                )
+            except Exception as e:
+                logging.error(f"Error preparing response: {e}", exc_info=True)
+                return func.HttpResponse(json.dumps({
+                    "message": "Error preparing response.",
+                    "result": None
+                }), status_code=500)
 
     except Exception as e:
         logging.error(f"Unexpected error: {e}", exc_info=True)
