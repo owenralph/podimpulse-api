@@ -240,12 +240,22 @@ def ingest(req: func.HttpRequest) -> func.HttpResponse:
 
         # Return the data table in a response
         try:
+            # Ensure potential_missing_episodes dates match the output format and timezone
+            if 'Date' in downloads_df.columns:
+                downloads_df['Date'] = pd.to_datetime(downloads_df['Date'])
+                if downloads_df['Date'].dt.tz is None or str(downloads_df['Date'].dt.tz) == 'None':
+                    downloads_df['Date'] = downloads_df['Date'].dt.tz_localize('UTC').dt.tz_convert('Europe/London')
+                else:
+                    downloads_df['Date'] = downloads_df['Date'].dt.tz_convert('Europe/London')
+                downloads_df['Date'] = downloads_df['Date'].dt.strftime('%Y-%m-%dT%H:%M:%S')
+            missing_dates = downloads_df.loc[downloads_df['potential_missing_episode'], 'Date']
+            missing_dates_list = list(missing_dates)
             response = {
                 "message": "Data processed successfully.",
                 "result": {
                     "instance_id": instance_id,
                     "data": json_data["data"],
-                    "potential_missing_episodes": missing_episodes
+                    "potential_missing_episodes": missing_dates_list
                 }
             }
             return func.HttpResponse(

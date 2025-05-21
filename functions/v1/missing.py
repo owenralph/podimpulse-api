@@ -67,13 +67,22 @@ def missing(req: func.HttpRequest) -> func.HttpResponse:
 
         if req.method == "GET":
             try:
-                # Return only the dates of missing episodes (as in ingest)
+                # Ensure potential_missing_episodes dates match the output format and timezone
+                if 'Date' in downloads_df.columns:
+                    # Convert to datetime if not already
+                    downloads_df['Date'] = pd.to_datetime(downloads_df['Date'])
+                    # Localize to Europe/London if not already tz-aware
+                    if downloads_df['Date'].dt.tz is None or str(downloads_df['Date'].dt.tz) == 'None':
+                        downloads_df['Date'] = downloads_df['Date'].dt.tz_localize('UTC').dt.tz_convert('Europe/London')
+                    else:
+                        downloads_df['Date'] = downloads_df['Date'].dt.tz_convert('Europe/London')
+                    downloads_df['Date'] = downloads_df['Date'].dt.strftime('%Y-%m-%dT%H:%M:%S')
                 missing_dates = downloads_df.loc[downloads_df['potential_missing_episode'], 'Date']
-                missing_dates_iso = pd.to_datetime(missing_dates).dt.strftime('%Y-%m-%d').tolist()
+                missing_dates_list = list(missing_dates)
                 return func.HttpResponse(
                     json.dumps({
                         "message": "Missing episodes retrieved successfully.",
-                        "result": {"potential_missing_episodes": missing_dates_iso}
+                        "result": {"potential_missing_episodes": missing_dates_list}
                     }),
                     mimetype="application/json",
                     status_code=200,
@@ -158,11 +167,16 @@ def missing(req: func.HttpRequest) -> func.HttpResponse:
 
             # Return the full updated dataframe in the same format as ingest
             try:
+                # Ensure potential_missing_episodes dates match the output format and timezone
+                missing_dates = downloads_df.loc[downloads_df['potential_missing_episode'], 'Date']
+                # Already formatted as '%Y-%m-%dT%H:%M:%S', so just return as-is
+                missing_dates_list = list(missing_dates)
                 response = {
                     "message": "Updates applied successfully.",
                     "result": {
                         "instance_id": instance_id,
-                        "data": downloads_df.to_dict(orient="records")
+                        "data": downloads_df.to_dict(orient="records"),
+                        "potential_missing_episodes": missing_dates_list
                     }
                 }
                 return func.HttpResponse(
