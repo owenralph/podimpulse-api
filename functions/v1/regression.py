@@ -4,13 +4,15 @@ import json
 import pandas as pd
 import numpy as np
 from typing import Optional
-from utils.azure_blob import load_from_blob_storage
+from utils.azure_blob import load_from_blob_storage, save_to_blob_storage
 from utils.retry import retry_with_backoff
 from sklearn.linear_model import Ridge
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.feature_selection import RFECV
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import RidgeCV
+import joblib
+import io
 
 def regression(req: func.HttpRequest) -> func.HttpResponse:
     """
@@ -293,6 +295,32 @@ def regression(req: func.HttpRequest) -> func.HttpResponse:
         coefs = dict(zip(X.columns, model.coef_))
         intercept = model.intercept_
         y_pred = model.predict(X_test)
+
+        # --- Save trained model to Azure Blob Storage ---
+        try:
+            # Serialize model, scaler, and feature list to bytes using BytesIO
+            model_artifact = {
+                'model': model,
+                'scaler': scaler,
+                'features': list(X.columns),
+                'target': target_col,
+                'instance_id': instance_id,
+                'timestamp': pd.Timestamp.now().isoformat()
+            }
+            buffer = io.BytesIO()
+            joblib.dump(model_artifact, buffer)
+            buffer.seek(0)
+            model_blob_name = f"{instance_id}_ridge_model.joblib"
+            retry_with_backoff(
+                lambda: save_to_blob_storage(buffer.read(), model_blob_name),
+                exceptions=(RuntimeError,),
+                max_attempts=3,
+                initial_delay=1.0,
+                backoff_factor=2.0
+            )()
+            logging.info(f"Trained model saved to blob: {model_blob_name}")
+        except Exception as e:
+            logging.error(f"Failed to save trained model to blob: {e}", exc_info=True)
 
         # --- Logging for Debugging ---
         logging.info(f"Model coefficients: {coefs}")
