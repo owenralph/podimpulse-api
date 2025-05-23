@@ -29,7 +29,9 @@ def parse_rss_feed(rss_url: str) -> pd.DataFrame:
                     published_date = utc_tz.localize(published_date)
                 localized_date = published_date.astimezone(london_tz).date()
                 title = entry.title
-                episode_data.append({"Date": localized_date, "Title": title})
+                # Add release_time as ISO string (UTC)
+                release_time = published_date.astimezone(pytz.utc).isoformat()
+                episode_data.append({"Date": localized_date, "Title": title, "release_time": release_time})
         if not episode_data:
             logging.warning("No valid episodes found in the RSS feed.")
         return pd.DataFrame(episode_data)

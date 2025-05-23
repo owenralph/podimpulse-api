@@ -194,9 +194,25 @@ def ingest(req: func.HttpRequest) -> func.HttpResponse:
                 "result": None
             }), status_code=500)
 
-        # Add seasonality predictors to the DataFrame
+        # Merge mean release_time per day from episode_data into downloads_df for hour_sin/hour_cos
         try:
-            downloads_df = add_seasonality_predictors(downloads_df, date_col='Date')
+            if 'Date' in episode_data.columns and 'release_time' in episode_data.columns:
+                episode_data['Date'] = pd.to_datetime(episode_data['Date'], errors='coerce', utc=True).dt.tz_convert('Europe/London').dt.date
+                episode_data['release_time_dt'] = pd.to_datetime(episode_data['release_time'], errors='coerce', utc=True)
+                # Compute mean release time per day (as hour float)
+                episode_data['release_hour'] = episode_data['release_time_dt'].dt.hour + episode_data['release_time_dt'].dt.minute / 60.0
+                daily_release_time = episode_data.groupby('Date')['release_time'].first().reset_index()  # Use first release time per day
+                downloads_df['Date'] = pd.to_datetime(downloads_df['Date'], errors='coerce', utc=True).dt.tz_convert('Europe/London').dt.date
+                downloads_df = downloads_df.merge(daily_release_time, on='Date', how='left')
+            else:
+                downloads_df['release_time'] = None
+        except Exception as e:
+            logging.error(f"Failed to merge release_time for hour_sin/hour_cos: {e}", exc_info=True)
+            downloads_df['release_time'] = None
+
+        # Add seasonality predictors to the DataFrame (including hour_sin/hour_cos if possible)
+        try:
+            downloads_df = add_seasonality_predictors(downloads_df, date_col='Date', release_time_col='release_time')
         except Exception as e:
             logging.error(f"Failed to add seasonality predictors: {e}", exc_info=True)
             return func.HttpResponse(json.dumps({
@@ -204,9 +220,62 @@ def ingest(req: func.HttpRequest) -> func.HttpResponse:
                 "result": None
             }), status_code=500)
 
+        # --- Add one-hot encoded time-of-day predictors for episode release hour ---
+        try:
+            episode_times = pd.DataFrame(episode_data)
+            if 'Date' in episode_times.columns and 'release_time' in episode_times.columns:
+                episode_times = episode_times[episode_times['release_time'].notnull()]
+                if not episode_times.empty:
+                    episode_times['release_time_dt'] = pd.to_datetime(episode_times['release_time'], errors='coerce', utc=True)
+                    episode_times = episode_times[episode_times['release_time_dt'].notnull()]
+                    episode_times['release_time_dt'] = episode_times['release_time_dt'].dt.tz_convert('Europe/London')
+                    episode_times['Date'] = pd.to_datetime(episode_times['Date'], errors='coerce', utc=True).dt.tz_convert('Europe/London').dt.date
+                    episode_times['release_hour'] = episode_times['release_time_dt'].dt.hour + episode_times['release_time_dt'].dt.minute / 60.0
+                    # Assign time of day bins
+                    def hour_bin(hour):
+                        if 0 <= hour < 6:
+                            return 'tod_00_06'
+                        elif 6 <= hour < 12:
+                            return 'tod_06_12'
+                        elif 12 <= hour < 18:
+                            return 'tod_12_18'
+                        elif 18 <= hour < 24:
+                            return 'tod_18_24'
+                        else:
+                            return 'tod_unknown'
+                    episode_times['release_tod_bin'] = episode_times['release_hour'].apply(hour_bin)
+                    # Aggregate one-hot counts per day
+                    tod_dummies = pd.get_dummies(episode_times['release_tod_bin'])
+                    tod_dummies['Date'] = episode_times['Date']
+                    daily_tod = tod_dummies.groupby('Date').sum().reset_index()
+                    # Merge with downloads_df
+                    downloads_df['Date'] = pd.to_datetime(downloads_df['Date'], errors='coerce', utc=True).dt.tz_convert('Europe/London').dt.date
+                    downloads_df = downloads_df.merge(daily_tod, on='Date', how='left')
+                    # Fill NaN with 0 for all tod columns
+                    for col in ['tod_00_06', 'tod_06_12', 'tod_12_18', 'tod_18_24']:
+                        if col not in downloads_df.columns:
+                            downloads_df[col] = 0
+                        else:
+                            downloads_df[col] = downloads_df[col].fillna(0).astype(int)
+                    # --- DEBUG: Log the first 5 rows of the time-of-day columns ---
+                    logging.info(f"First 5 rows of time-of-day columns: {downloads_df[['Date','tod_00_06','tod_06_12','tod_12_18','tod_18_24']].head().to_dict('records')}")
+                else:
+                    for col in ['tod_00_06', 'tod_06_12', 'tod_12_18', 'tod_18_24']:
+                        downloads_df[col] = 0
+            else:
+                for col in ['tod_00_06', 'tod_06_12', 'tod_12_18', 'tod_18_24']:
+                    downloads_df[col] = 0
+        except Exception as e:
+            logging.error(f"Failed to add time-of-day predictors: {e}", exc_info=True)
+            for col in ['tod_00_06', 'tod_06_12', 'tod_12_18', 'tod_18_24']:
+                downloads_df[col] = 0
+
         # Convert to JSON and prepare final blob
         try:
-            # Convert 'Date' column to UK local time and add timezone indicator
+            # Ensure 'Date' is always a datetime with timezone before using .dt
+            downloads_df['Date'] = pd.to_datetime(downloads_df['Date'], errors='coerce', utc=True)
+            if downloads_df['Date'].dt.tz is None or str(downloads_df['Date'].dt.tz) == 'None':
+                downloads_df['Date'] = downloads_df['Date'].dt.tz_localize('UTC')
             local_dt = downloads_df['Date'].dt.tz_convert('Europe/London')
             downloads_df['Date'] = local_dt.dt.strftime('%Y-%m-%dT%H:%M:%S')
             # Add a new column for timezone indicator (BST/GMT)
