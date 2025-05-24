@@ -350,3 +350,126 @@ def regression(req: func.HttpRequest) -> func.HttpResponse:
             "message": "An unexpected error occurred in regression.",
             "result": None
         }), status_code=500)
+
+def predict(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Azure Function endpoint to predict the next 60 days using the saved regression model.
+    Args:
+        req (func.HttpRequest): The HTTP request object.
+    Returns:
+        func.HttpResponse: The HTTP response with predictions or error message.
+    """
+    logging.info("Received request for prediction endpoint.")
+    try:
+        if req.method != "POST":
+            return func.HttpResponse(json.dumps({
+                "message": "Method not allowed.",
+                "result": None
+            }), status_code=405)
+
+        try:
+            request_data = req.get_json()
+        except ValueError:
+            return func.HttpResponse(json.dumps({
+                "message": "Invalid JSON body",
+                "result": None
+            }), status_code=400)
+
+        instance_id: Optional[str] = request_data.get('instance_id')
+        if not instance_id:
+            return func.HttpResponse(json.dumps({
+                "message": "Missing instance_id.",
+                "result": None
+            }), status_code=400)
+
+        # Load model from blob storage
+        model_blob_name = f"{instance_id}_ridge_model.joblib"
+        try:
+            model_bytes = retry_with_backoff(
+                lambda: load_from_blob_storage(model_blob_name),
+                exceptions=(RuntimeError,),
+                max_attempts=3,
+                initial_delay=1.0,
+                backoff_factor=2.0
+            )()
+            buffer = io.BytesIO(model_bytes)
+            model_artifact = joblib.load(buffer)
+            model = model_artifact['model']
+            scaler = model_artifact['scaler']
+            features = model_artifact['features']
+            target_col = model_artifact['target']
+        except Exception as e:
+            logging.error(f"Failed to load model: {e}", exc_info=True)
+            return func.HttpResponse(json.dumps({
+                "message": "Failed to load model.",
+                "result": None
+            }), status_code=500)
+
+        # Load the latest data
+        try:
+            blob_data = retry_with_backoff(
+                lambda: load_from_blob_storage(instance_id),
+                exceptions=(RuntimeError,),
+                max_attempts=3,
+                initial_delay=1.0,
+                backoff_factor=2.0
+            )()
+            json_data = json.loads(blob_data)
+            data = json_data.get("data")
+            if not data:
+                return func.HttpResponse(json.dumps({
+                    "message": "No data found for prediction.",
+                    "result": None
+                }), status_code=404)
+        except Exception as e:
+            logging.error(f"Failed to load blob data: {e}", exc_info=True)
+            return func.HttpResponse(json.dumps({
+                "message": "Failed to load blob data.",
+                "result": None
+            }), status_code=500)
+
+        df = pd.DataFrame(data)
+        # Ensure features are present
+        for col in features:
+            if col not in df.columns:
+                df[col] = 0
+        # Predict next 60 days
+        predictions = []
+        last_row = df.iloc[-1].copy()
+        for i in range(60):
+            # Prepare input for prediction
+            X_input = last_row[features].values.reshape(1, -1)
+            X_scaled = scaler.transform(X_input)
+            y_pred = model.predict(X_scaled)[0]
+            # Store prediction
+            pred_date = pd.to_datetime(last_row['Date']) + pd.Timedelta(days=1)
+            predictions.append({
+                'date': pred_date.strftime('%Y-%m-%d'),
+                'prediction': float(y_pred)
+            })
+            # Update last_row for next prediction (autoregressive)
+            last_row[target_col] = y_pred
+            if 'Date' in last_row:
+                last_row['Date'] = pred_date
+            # Update lagged/rolling features if present
+            for lag in [1, 7, 14]:
+                lag_col = f'{target_col}_lag_{lag}'
+                if lag_col in last_row:
+                    last_row[lag_col] = last_row[target_col]
+            for stat in ['min', 'max', 'median']:
+                colname = f'rolling_{stat}_7'
+                if colname in last_row:
+                    last_row[colname] = last_row[target_col]
+            if f'{target_col}_expanding_mean' in last_row:
+                last_row[f'{target_col}_expanding_mean'] = last_row[target_col]
+            # (Optional: update other engineered features as needed)
+        return func.HttpResponse(json.dumps({
+            "message": "Prediction completed successfully.",
+            "result": predictions
+        }), mimetype="application/json", status_code=200)
+    except Exception as e:
+        logging.error(f"Unexpected error in predict endpoint: {e}", exc_info=True)
+        return func.HttpResponse(json.dumps({
+            "message": "An unexpected error occurred in predict.",
+            "result": None
+        }), status_code=500)

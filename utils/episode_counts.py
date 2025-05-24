@@ -25,8 +25,12 @@ def add_episode_counts_and_titles(
         pd.DataFrame: Updated DataFrame with episode counts, titles, and cluster information.
     """
     # Ensure both DataFrames have the 'Date' column as datetime64[ns] with UTC
-    downloads_df['Date'] = pd.to_datetime(downloads_df['Date'], utc=True)
-    episode_data['Date'] = pd.to_datetime(episode_data['Date'], utc=True)
+    # Use dayfirst=True and errors='coerce' to robustly parse mixed date formats
+    downloads_df['Date'] = pd.to_datetime(downloads_df['Date'], utc=True, dayfirst=True, errors='coerce')
+    episode_data['Date'] = pd.to_datetime(episode_data['Date'], utc=True, dayfirst=True, errors='coerce')
+    # Drop rows where date parsing failed
+    downloads_df = downloads_df.dropna(subset=['Date'])
+    episode_data = episode_data.dropna(subset=['Date'])
 
     # Convert RSS episode dates to UK local time (Europe/London) and extract local date
     uk_tz = pytz.timezone('Europe/London')

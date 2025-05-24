@@ -65,6 +65,10 @@ def missing(req: func.HttpRequest) -> func.HttpResponse:
                 "Failed to process blob data.", status_code=500
             )
 
+        # Defensive: If 'potential_missing_episode' is missing, add it as all False
+        if 'potential_missing_episode' not in downloads_df.columns:
+            downloads_df['potential_missing_episode'] = False
+
         if req.method == "GET":
             try:
                 # Ensure potential_missing_episodes dates match the output format and timezone

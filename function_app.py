@@ -9,6 +9,7 @@ from functions.v1.facebook.token import get_page_token as get_page_token_handler
 from functions.v1.facebook.pages import get_user_pages as get_user_pages_handler
 from functions.v1.facebook.analytics import query_reels_analytics as query_page_analytics_handler
 from functions.v1.regression import regression as analyze_regression_handler
+from functions.v1.predict import predict as predict_handler
 
 # Initialize the Function App
 # I hope this works
@@ -44,6 +45,10 @@ def impact(req: func.HttpRequest) -> func.HttpResponse:
 @app.route(route="v1/analyze_regression")
 def analyze_regression(req: func.HttpRequest) -> func.HttpResponse:
     return analyze_regression_handler(req)
+
+@app.route(route="v1/predict")
+def predict_endpoint(req: func.HttpRequest) -> func.HttpResponse:
+    return predict_handler(req)
 
 """""""""
 Facebook connection

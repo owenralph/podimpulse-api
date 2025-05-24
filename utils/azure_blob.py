@@ -29,21 +29,18 @@ def save_to_blob_storage(data: str, instance_id: Optional[str] = None) -> str:
     except Exception as e:
         raise RuntimeError(f"Error saving to Blob Storage: {e}")
 
-def load_from_blob_storage(instance_id: str) -> str:
+def load_from_blob_storage(instance_id: str, binary: bool = False):
     """
-    Loads JSON data from Azure Blob Storage using an instance_id.
-    Args:
-        instance_id (str): The instance ID for the blob.
-    Returns:
-        str: The JSON string loaded from the blob.
-    Raises:
-        RuntimeError: If loading from blob fails.
+    Loads data from Azure Blob Storage using an instance_id.
+    If binary=True, returns raw bytes. Otherwise, returns decoded utf-8 string.
     """
     try:
         blob_name = f"{instance_id}.json"
         blob_client = blob_container_client.get_blob_client(blob_name)
         blob_data = blob_client.download_blob().readall()
         logging.info(f"Dataset loaded from Blob Storage with instance_id: {instance_id}")
+        if binary:
+            return blob_data
         return blob_data.decode("utf-8")
     except Exception as e:
         raise RuntimeError(f"Error loading from Blob Storage: {e}")
