@@ -12,18 +12,71 @@ import io
 def predict(req: func.HttpRequest) -> func.HttpResponse:
     """
     Azure Function endpoint to predict the next 60 days using the saved regression model.
-    Args:
-        req (func.HttpRequest): The HTTP request object.
-    Returns:
-        func.HttpResponse: The HTTP response with predictions or error message.
+    Supports advanced optimization of episode release dates and returns analytics-friendly output.
     """
     logging.info("Received request for prediction endpoint.")
     try:
-        if req.method != "POST":
-            return func.HttpResponse(json.dumps({
-                "message": "Method not allowed.",
-                "result": None
-            }), status_code=405)
+        def _run_forecast(
+            history_df, features, scaler, model, target_col, release_dates_set, release_indices=None, forecast_days=60
+        ):
+            rerun_predicted_rows = []
+            for i in range(forecast_days):
+                last_row = history_df.iloc[-1].copy()
+                pred_date = pd.to_datetime(last_row['Date']) + pd.Timedelta(days=1)
+                new_row = last_row.copy()
+                new_row['Date'] = pred_date
+                date_str = pred_date.strftime('%Y-%m-%d')
+                # Set Episodes Released based on release_dates or optimized indices
+                if 'Episodes Released' in new_row:
+                    if date_str in release_dates_set or (release_indices and i in release_indices):
+                        new_row['Episodes Released'] = 1
+                    else:
+                        new_row['Episodes Released'] = 0
+                for lag in [1, 7, 14]:
+                    lag_col = f'{target_col}_lag_{lag}'
+                    if lag_col in new_row:
+                        if len(history_df) >= lag:
+                            new_row[lag_col] = history_df[target_col].iloc[-lag]
+                        else:
+                            new_row[lag_col] = np.nan
+                for stat in ['min', 'max', 'median']:
+                    colname = f'rolling_{stat}_7'
+                    if colname in new_row:
+                        window = history_df[target_col].iloc[-7:] if len(history_df) >= 7 else history_df[target_col]
+                        new_row[colname] = getattr(window, stat)()
+                if f'{target_col}_expanding_mean' in new_row:
+                    new_row[f'{target_col}_expanding_mean'] = history_df[target_col].expanding().mean().iloc[-1]
+                if 'is_weekend' in new_row:
+                    new_row['is_weekend'] = pred_date.weekday() >= 5
+                day_of_year = pred_date.timetuple().tm_yday
+                for k in [1, 2]:
+                    sin_col = f'fourier_sin_{k}'
+                    cos_col = f'fourier_cos_{k}'
+                    if sin_col in new_row:
+                        new_row[sin_col] = np.sin(2 * np.pi * k * day_of_year / 365.25)
+                    if cos_col in new_row:
+                        new_row[cos_col] = np.cos(2 * np.pi * k * day_of_year / 365.25)
+                if 'Episodes Released' in new_row:
+                    for lag in [1, 2, 3, 7]:
+                        lag_col = f'Episodes_Released_lag_{lag}'
+                        if lag_col in new_row:
+                            if len(history_df) >= lag:
+                                new_row[lag_col] = history_df['Episodes Released'].iloc[-lag]
+                            else:
+                                new_row[lag_col] = 0
+                    if 'Episodes_Released_rolling_7' in new_row:
+                        window = history_df['Episodes Released'].iloc[-7:] if len(history_df) >= 7 else history_df['Episodes Released']
+                        new_row['Episodes_Released_rolling_7'] = window.sum()
+                for col in features:
+                    if col not in new_row or pd.isnull(new_row[col]):
+                        new_row[col] = 0
+                X_input = pd.DataFrame([new_row[features]], columns=features)
+                X_scaled = scaler.transform(X_input)
+                y_pred = model.predict(X_scaled)[0]
+                new_row[target_col] = y_pred
+                rerun_predicted_rows.append(new_row.copy())
+                history_df = pd.concat([history_df, pd.DataFrame([new_row])], ignore_index=True)
+            return rerun_predicted_rows
 
         try:
             request_data = req.get_json()
@@ -34,11 +87,22 @@ def predict(req: func.HttpRequest) -> func.HttpResponse:
             }), status_code=400)
 
         instance_id: Optional[str] = request_data.get('instance_id')
+        episodes = request_data.get('episodes')
+        release_dates = request_data.get('release_dates', [])
+        # Normalize release_dates to set for quick lookup
+        release_dates_set = set(pd.to_datetime(release_dates).strftime('%Y-%m-%d'))
         if not instance_id:
             return func.HttpResponse(json.dumps({
                 "message": "Missing instance_id.",
                 "result": None
             }), status_code=400)
+
+        # If neither episodes nor release_dates are specified, default episodes to the number of days with Episodes Released==1 in the last 60 days
+        if episodes is None and not release_dates:
+            # We'll determine this after prediction loop, but for now, set episodes to None and handle after
+            auto_count_episodes = True
+        else:
+            auto_count_episodes = False
 
         # Load model from blob storage
         model_blob_name = f"{instance_id}_ridge_model.joblib"
@@ -87,21 +151,27 @@ def predict(req: func.HttpRequest) -> func.HttpResponse:
             }), status_code=500)
 
         df = pd.DataFrame(data)
-        # Ensure features are present
         for col in features:
             if col not in df.columns:
                 df[col] = 0
-        # Predict next 60 days
-        predictions = []
-        # Keep a rolling window of the last N days for lag/rolling features
+        predicted_rows = []
         history = df.copy()
+        # Track which dates are set as release dates
+        used_release_dates = set(release_dates_set)
+        # For optimization, store candidate dates and their predicted downloads
+        candidate_dates = []
         for i in range(60):
-            # Compute date for prediction
             last_row = history.iloc[-1].copy()
             pred_date = pd.to_datetime(last_row['Date']) + pd.Timedelta(days=1)
-            # Build new row for prediction
             new_row = last_row.copy()
             new_row['Date'] = pred_date
+            # Set Episodes Released based on release_dates
+            date_str = pred_date.strftime('%Y-%m-%d')
+            if 'Episodes Released' in new_row:
+                if date_str in release_dates_set:
+                    new_row['Episodes Released'] = 1
+                else:
+                    new_row['Episodes Released'] = 0
             # Update lagged target features
             for lag in [1, 7, 14]:
                 lag_col = f'{target_col}_lag_{lag}'
@@ -151,19 +221,63 @@ def predict(req: func.HttpRequest) -> func.HttpResponse:
             X_input = pd.DataFrame([new_row[features]], columns=features)
             X_scaled = scaler.transform(X_input)
             y_pred = model.predict(X_scaled)[0]
-            # Store prediction
-            predictions.append({
-                'date': pred_date.strftime('%Y-%m-%d'),
-                'prediction': float(y_pred)
-            })
-            # Update target for next iteration
             new_row[target_col] = y_pred
-            # Append new_row to history for next iteration
+            # Optionally, update any additional columns (e.g., timezone, etc.)
+            predicted_rows.append(new_row.copy())
             history = pd.concat([history, pd.DataFrame([new_row])], ignore_index=True)
-        return func.HttpResponse(json.dumps({
+            # If this date is not in release_dates_set, store as candidate for optimization
+            if episodes is not None and episodes > len(release_dates_set):
+                if date_str not in release_dates_set:
+                    candidate_dates.append((i, date_str, y_pred, new_row.copy()))
+        # If auto_count_episodes, count how many days in predicted_rows have Episodes Released==1
+        if auto_count_episodes:
+            episodes = sum(1 for row in predicted_rows if row.get('Episodes Released', 0) == 1)
+        # If episodes > len(release_dates_set), optimize additional release dates
+        if episodes is not None and episodes > len(release_dates_set):
+            # Find the (episodes - len(release_dates_set)) candidate dates with highest predicted downloads
+            n_to_add = episodes - len(release_dates_set)
+            # Sort candidate_dates by predicted downloads, descending
+            candidate_dates_sorted = sorted(candidate_dates, key=lambda x: x[2], reverse=True)
+            # Get the indices of the top n_to_add dates
+            indices_to_set = [x[0] for x in candidate_dates_sorted[:n_to_add]]
+            # Set Episodes Released=1 for those dates in predicted_rows
+            for idx in indices_to_set:
+                predicted_rows[idx]['Episodes Released'] = 1
+            optimized_release_indices = set(indices_to_set)
+            optimized_release_dates = set(
+                predicted_rows[idx]['Date'].strftime('%Y-%m-%d') if isinstance(predicted_rows[idx]['Date'], pd.Timestamp) else str(predicted_rows[idx]['Date'])
+                for idx in indices_to_set
+            )
+            # Log optimized release dates
+            logging.info(f"Optimized release indices: {sorted(optimized_release_indices)}")
+            logging.info(f"Optimized release dates: {sorted(optimized_release_dates)}")
+            # Re-run the forecast with the new release schedule
+            predicted_rows = _run_forecast(
+                df.copy(), features, scaler, model, target_col, release_dates_set, optimized_release_indices, forecast_days=60
+            )
+        pred_df = pd.DataFrame(predicted_rows)
+        if 'Date' in pred_df.columns:
+            if 'timezone' in df.columns:
+                tz = history.iloc[-1].get('timezone', 'UTC')
+                pred_df['timezone'] = tz
+            # Always output as ISO8601 UTC
+            pred_df['Date'] = pd.to_datetime(pred_df['Date'], utc=True).dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+        for col in df.columns:
+            if col not in pred_df.columns:
+                pred_df[col] = None
+        pred_df = pred_df[df.columns]
+        result_records = pred_df.to_dict(orient="records")
+        total_downloads = float(pred_df[target_col].sum()) if target_col in pred_df.columns else None
+        # Log total downloads
+        logging.info(f"Total predicted downloads: {total_downloads}")
+        response = {
             "message": "Prediction completed successfully.",
-            "result": predictions
-        }), mimetype="application/json", status_code=200)
+            "result": result_records,
+            "total_downloads": total_downloads
+        }
+        if episodes is not None and episodes > len(release_dates_set):
+            response["optimized_release_dates"] = sorted(list(optimized_release_dates))
+        return func.HttpResponse(json.dumps(response), mimetype="application/json", status_code=200)
     except Exception as e:
         logging.error(f"Unexpected error in predict endpoint: {e}", exc_info=True)
         return func.HttpResponse(json.dumps({
