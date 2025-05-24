@@ -5,17 +5,23 @@ import feedparser
 import pytz
 from dateutil import parser
 from utils.constants import TIMEZONE
+from utils import handle_errors
 
+@handle_errors
 def parse_rss_feed(rss_url: str) -> pd.DataFrame:
     """
     Fetches and parses the RSS feed, returning episode titles and publication dates.
+
     Args:
         rss_url (str): The URL of the RSS feed.
+
     Returns:
         pd.DataFrame: DataFrame with columns 'Date' and 'Title'.
+
     Raises:
         ValueError: If the RSS feed cannot be parsed.
     """
+    logging.debug(f"Parsing RSS feed from URL: {rss_url}")
     try:
         logging.info(f"Fetching and parsing RSS feed from: {rss_url}")
         feed = feedparser.parse(rss_url)
@@ -34,4 +40,5 @@ def parse_rss_feed(rss_url: str) -> pd.DataFrame:
             logging.warning("No valid episodes found in the RSS feed.")
         return pd.DataFrame(episode_data)
     except Exception as e:
+        logging.error(f"Error parsing RSS feed: {e}")
         raise ValueError(f"Error parsing RSS feed: {e}")

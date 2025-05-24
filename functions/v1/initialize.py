@@ -1,6 +1,5 @@
 import azure.functions as func
-from utils.azure_blob import save_to_blob_storage
-from utils.retry import retry_with_backoff
+from utils import validate_http_method, json_response, handle_blob_operation, error_response
 import logging
 import json
 import time
@@ -9,65 +8,41 @@ from typing import Optional
 def initialize(req: func.HttpRequest) -> func.HttpResponse:
     """
     Azure Function endpoint to initialize a new instance and create an empty blob.
+
     Args:
         req (func.HttpRequest): The HTTP request object.
+
     Returns:
-        func.HttpResponse: The HTTP response with the new instance_id or error message.
+        func.HttpResponse: The HTTP response with the new instance ID or error message.
     """
+    logging.debug("[initialize] Received request to initialize a new instance.")
     start_time = time.time()
-    logging.info("Received request to initialize a new instance.")
 
-    try:
-        # Validate HTTP method
-        if req.method != "POST":
-            logging.error(f"Invalid HTTP method: {req.method}")
-            return func.HttpResponse("Method Not Allowed", status_code=405)
+    # Validate HTTP method
+    method_error = validate_http_method(req, ["POST"])
+    if method_error:
+        return method_error
 
-        # Create an empty JSON object
-        empty_json = "{}"
+    # Create an empty JSON object
+    empty_json = "{}"
 
-        # Save the empty JSON to Azure Blob Storage with retry
-        try:
-            save_start = time.time()
-            instance_id = retry_with_backoff(
-                lambda: save_to_blob_storage(empty_json),
-                exceptions=(RuntimeError,),
-                max_attempts=3,
-                initial_delay=1.0,
-                backoff_factor=2.0
-            )()
-            save_duration = time.time() - save_start
-            logging.info(f"Blob save completed in {save_duration:.2f} seconds.")
-        except Exception as e:
-            logging.error(f"Failed to save to Azure Blob Storage: {e}", exc_info=True)
-            return func.HttpResponse(
-                "Failed to initialize instance.", 
-                status_code=500
-            )
+    # Save the empty JSON to Azure Blob Storage with retry
+    save_start = time.time()
+    from utils.azure_blob import save_to_blob_storage
+    from utils.retry import retry_with_backoff
+    instance_id, err = handle_blob_operation(
+        retry_with_backoff(lambda: save_to_blob_storage(empty_json), exceptions=(RuntimeError,), max_attempts=3, initial_delay=1.0, backoff_factor=2.0)
+    )
+    if err:
+        return error_response("Failed to initialize instance.", 500)
+    save_duration = time.time() - save_start
+    logging.info(f"Blob save completed in {save_duration:.2f} seconds.")
 
-        # Return the instance ID in a JSON response
-        try:
-            response_data = {
-                "message": "Instance initialized successfully.",
-                "result": {"instance_id": instance_id}
-            }
-            total_duration = time.time() - start_time
-            logging.info(f"Total function execution time: {total_duration:.2f} seconds.")
-            return func.HttpResponse(
-                json.dumps(response_data),
-                mimetype="application/json",
-                status_code=200
-            )
-        except Exception as e:
-            logging.error(f"Failed to prepare response: {e}", exc_info=True)
-            return func.HttpResponse(
-                "Failed to prepare response.",
-                status_code=500
-            )
-
-    except Exception as e:
-        logging.error(f"Unexpected error: {e}", exc_info=True)
-        return func.HttpResponse(
-            "An unexpected error occurred.", 
-            status_code=500
-        )
+    # Return the instance ID in a JSON response
+    response_data = {
+        "message": "Instance initialized successfully.",
+        "result": {"instance_id": instance_id}
+    }
+    total_duration = time.time() - start_time
+    logging.info(f"Total function execution time: {total_duration:.2f} seconds.")
+    return json_response(response_data, 200)

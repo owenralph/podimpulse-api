@@ -1,17 +1,24 @@
 from io import StringIO
 import pandas as pd
 from typing import Any
+from utils import handle_errors
+import logging
 
+@handle_errors
 def parse_csv(file_stream: Any) -> pd.DataFrame:
     """
     Parses the uploaded CSV file into a DataFrame.
+
     Args:
         file_stream (Any): File-like object or string containing CSV data.
+
     Returns:
         pd.DataFrame: Parsed DataFrame with 'Date' as datetime.
+
     Raises:
         ValueError: If the CSV cannot be parsed.
     """
+    logging.debug("Parsing CSV input stream.")
     try:
         # Check if the input is already a string
         if isinstance(file_stream, str):
@@ -45,6 +52,8 @@ def parse_csv(file_stream: Any) -> pd.DataFrame:
                             pass
                 return df
             except Exception as e2:
+                logging.error(f"Error parsing CSV file: {e2}")
                 raise ValueError(f"Error parsing CSV file: {e2}")
     except Exception as e:
+        logging.error(f"Error parsing CSV file: {e}")
         raise ValueError(f"Error parsing CSV file: {e}")

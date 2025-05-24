@@ -8,14 +8,83 @@ from utils.azure_blob import load_from_blob_storage
 from utils.retry import retry_with_backoff
 import joblib
 import io
+from utils import validate_http_method, json_response, handle_blob_operation, error_response
 
 def predict(req: func.HttpRequest) -> func.HttpResponse:
     """
-    Azure Function endpoint to predict the next 60 days using the saved regression model.
-    Supports advanced optimization of episode release dates and returns analytics-friendly output.
+    Azure Function endpoint to provide advanced forecasting and optimization for podcast episodes.
+
+    Args:
+        req (func.HttpRequest): The HTTP request object.
+
+    Returns:
+        func.HttpResponse: The HTTP response with prediction results or error message.
     """
-    logging.info("Received request for prediction endpoint.")
+    logging.debug("[predict] Received request for advanced forecasting and optimization.")
+    # Validate HTTP method
+    method_error = validate_http_method(req, ["POST"])
+    if method_error:
+        return method_error
     try:
+        try:
+            request_data = req.get_json()
+        except ValueError:
+            return error_response("Invalid JSON body", 400)
+        instance_id: Optional[str] = request_data.get('instance_id')
+        episodes = request_data.get('episodes')
+        release_dates = request_data.get('release_dates', [])
+        release_dates_set = set(pd.to_datetime(release_dates).strftime('%Y-%m-%d'))
+        if not instance_id:
+            return error_response("Missing instance_id.", 400)
+        if episodes is None and not release_dates:
+            auto_count_episodes = True
+        else:
+            auto_count_episodes = False
+        # Load model from blob storage
+        model_blob_name = f"{instance_id}_ridge_model.joblib"
+        model_bytes, err = handle_blob_operation(
+            retry_with_backoff(
+                lambda: load_from_blob_storage(model_blob_name, binary=True),
+                exceptions=(RuntimeError,),
+                max_attempts=3,
+                initial_delay=1.0,
+                backoff_factor=2.0
+            )
+        )
+        if err:
+            return error_response("Failed to load model.", 500)
+        buffer = io.BytesIO(model_bytes)
+        model_artifact = joblib.load(buffer)
+        model = model_artifact['model']
+        scaler = model_artifact['scaler']
+        features = model_artifact['features']
+        target_col = model_artifact['target']
+        # Load the latest data
+        blob_data, err = handle_blob_operation(
+            retry_with_backoff(
+                lambda: load_from_blob_storage(instance_id),
+                exceptions=(RuntimeError,),
+                max_attempts=3,
+                initial_delay=1.0,
+                backoff_factor=2.0
+            )
+        )
+        if err:
+            return error_response("Failed to load blob data.", 500)
+        json_data = json.loads(blob_data)
+        data = json_data.get("data")
+        if not data:
+            return error_response("No data found for prediction.", 404)
+        df = pd.DataFrame(data)
+        for col in features:
+            if col not in df.columns:
+                df[col] = 0
+        predicted_rows = []
+        history = df.copy()
+        # Track which dates are set as release dates
+        used_release_dates = set(release_dates_set)
+        # For optimization, store candidate dates and their predicted downloads
+        candidate_dates = []
         def _run_forecast(
             history_df, features, scaler, model, target_col, release_dates_set, release_indices=None, forecast_days=60
         ):
@@ -77,89 +146,6 @@ def predict(req: func.HttpRequest) -> func.HttpResponse:
                 rerun_predicted_rows.append(new_row.copy())
                 history_df = pd.concat([history_df, pd.DataFrame([new_row])], ignore_index=True)
             return rerun_predicted_rows
-
-        try:
-            request_data = req.get_json()
-        except ValueError:
-            return func.HttpResponse(json.dumps({
-                "message": "Invalid JSON body",
-                "result": None
-            }), status_code=400)
-
-        instance_id: Optional[str] = request_data.get('instance_id')
-        episodes = request_data.get('episodes')
-        release_dates = request_data.get('release_dates', [])
-        # Normalize release_dates to set for quick lookup
-        release_dates_set = set(pd.to_datetime(release_dates).strftime('%Y-%m-%d'))
-        if not instance_id:
-            return func.HttpResponse(json.dumps({
-                "message": "Missing instance_id.",
-                "result": None
-            }), status_code=400)
-
-        # If neither episodes nor release_dates are specified, default episodes to the number of days with Episodes Released==1 in the last 60 days
-        if episodes is None and not release_dates:
-            # We'll determine this after prediction loop, but for now, set episodes to None and handle after
-            auto_count_episodes = True
-        else:
-            auto_count_episodes = False
-
-        # Load model from blob storage
-        model_blob_name = f"{instance_id}_ridge_model.joblib"
-        try:
-            model_bytes = retry_with_backoff(
-                lambda: load_from_blob_storage(model_blob_name, binary=True),
-                exceptions=(RuntimeError,),
-                max_attempts=3,
-                initial_delay=1.0,
-                backoff_factor=2.0
-            )()
-            buffer = io.BytesIO(model_bytes)
-            model_artifact = joblib.load(buffer)
-            model = model_artifact['model']
-            scaler = model_artifact['scaler']
-            features = model_artifact['features']
-            target_col = model_artifact['target']
-        except Exception as e:
-            logging.error(f"Failed to load model: {e}", exc_info=True)
-            return func.HttpResponse(json.dumps({
-                "message": "Failed to load model.",
-                "result": None
-            }), status_code=500)
-
-        # Load the latest data
-        try:
-            blob_data = retry_with_backoff(
-                lambda: load_from_blob_storage(instance_id),
-                exceptions=(RuntimeError,),
-                max_attempts=3,
-                initial_delay=1.0,
-                backoff_factor=2.0
-            )()
-            json_data = json.loads(blob_data)
-            data = json_data.get("data")
-            if not data:
-                return func.HttpResponse(json.dumps({
-                    "message": "No data found for prediction.",
-                    "result": None
-                }), status_code=404)
-        except Exception as e:
-            logging.error(f"Failed to load blob data: {e}", exc_info=True)
-            return func.HttpResponse(json.dumps({
-                "message": "Failed to load blob data.",
-                "result": None
-            }), status_code=500)
-
-        df = pd.DataFrame(data)
-        for col in features:
-            if col not in df.columns:
-                df[col] = 0
-        predicted_rows = []
-        history = df.copy()
-        # Track which dates are set as release dates
-        used_release_dates = set(release_dates_set)
-        # For optimization, store candidate dates and their predicted downloads
-        candidate_dates = []
         for i in range(60):
             last_row = history.iloc[-1].copy()
             pred_date = pd.to_datetime(last_row['Date']) + pd.Timedelta(days=1)
@@ -277,10 +263,7 @@ def predict(req: func.HttpRequest) -> func.HttpResponse:
         }
         if episodes is not None and episodes > len(release_dates_set):
             response["optimized_release_dates"] = sorted(list(optimized_release_dates))
-        return func.HttpResponse(json.dumps(response), mimetype="application/json", status_code=200)
+        return json_response(response, 200)
     except Exception as e:
         logging.error(f"Unexpected error in predict endpoint: {e}", exc_info=True)
-        return func.HttpResponse(json.dumps({
-            "message": "An unexpected error occurred in predict.",
-            "result": None
-        }), status_code=500)
+        return error_response("An unexpected error occurred in predict.", 500)

@@ -5,7 +5,16 @@ import json
 
 
 def get_user_pages(req: func.HttpRequest) -> func.HttpResponse:
-    """Fetches pages the user has access to using the long-lived user token."""
+    """
+    Azure Function endpoint to get Facebook user pages.
+
+    Args:
+        req (func.HttpRequest): The HTTP request object.
+
+    Returns:
+        func.HttpResponse: The HTTP response with user pages or error message.
+    """
+    logging.debug("[get_user_pages] Received request to get Facebook user pages.")
     try:
         body = req.get_json()
         user_token = body.get("user_token")

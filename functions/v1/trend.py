@@ -13,12 +13,14 @@ from typing import Optional
 def trend(req: func.HttpRequest) -> func.HttpResponse:
     """
     Azure Function endpoint to calculate trend with rolling average and line of best fit.
+
     Args:
         req (func.HttpRequest): The HTTP request object.
+
     Returns:
         func.HttpResponse: The HTTP response with trend data or error message.
     """
-    logging.info("Received request to calculate trend with rolling average and line of best fit.")
+    logging.debug("[trend] Received request to calculate trend with rolling average and line of best fit.")
 
     try:
         # Validate HTTP method

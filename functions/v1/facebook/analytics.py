@@ -5,7 +5,16 @@ import logging
 
 
 def query_reels_analytics(req: func.HttpRequest) -> func.HttpResponse:
-    """Fetches and processes analytics for Facebook Reels."""
+    """
+    Azure Function endpoint to query Facebook Reels analytics for a page.
+
+    Args:
+        req (func.HttpRequest): The HTTP request object.
+
+    Returns:
+        func.HttpResponse: The HTTP response with analytics data or error message.
+    """
+    logging.debug("[query_reels_analytics] Received request to query Facebook Reels analytics.")
     try:
         body = req.get_json()
         page_token = body.get("page_token")

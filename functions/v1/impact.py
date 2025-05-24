@@ -14,11 +14,14 @@ from sklearn.preprocessing import StandardScaler
 def impact(req: func.HttpRequest) -> func.HttpResponse:
     """
     Azure Function endpoint to calculate the impact of episode releases using regression analysis.
+
     Args:
         req (func.HttpRequest): The HTTP request object.
+
     Returns:
         func.HttpResponse: The HTTP response with regression results or error message.
     """
+    logging.debug("[impact] Received request to calculate episode impact using regression.")
     logging.info("Received request to calculate episode impact using regression.")
 
     try:

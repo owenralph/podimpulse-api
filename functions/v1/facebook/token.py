@@ -6,7 +6,16 @@ import logging
 
 
 def exchange_user_token(req: func.HttpRequest) -> func.HttpResponse:
-    """Exchanges a short-lived user token for a long-lived token."""
+    """
+    Azure Function endpoint to exchange a Facebook user token for a page token.
+
+    Args:
+        req (func.HttpRequest): The HTTP request object.
+
+    Returns:
+        func.HttpResponse: The HTTP response with the exchanged token or error message.
+    """
+    logging.debug("[exchange_user_token] Received request to exchange Facebook user token.")
     try:
         body = req.get_json()
         user_token = body.get("user_token")
@@ -39,7 +48,16 @@ def exchange_user_token(req: func.HttpRequest) -> func.HttpResponse:
 
 
 def get_page_token(req: func.HttpRequest) -> func.HttpResponse:
-    """Retrieves a page-specific access token using the page ID."""
+    """
+    Azure Function endpoint to get a Facebook page token.
+
+    Args:
+        req (func.HttpRequest): The HTTP request object.
+
+    Returns:
+        func.HttpResponse: The HTTP response with the page token or error message.
+    """
+    logging.debug("[get_page_token] Received request to get Facebook page token.")
     try:
         body = req.get_json()
         user_token = body.get("user_token")

@@ -12,6 +12,7 @@ def retry_with_backoff(
 ) -> Callable:
     """
     Retry a function with exponential backoff on specified exceptions.
+
     Args:
         func (Callable): The function to retry.
         exceptions (Tuple[Type[BaseException], ...]): Exceptions to catch and retry on.
@@ -19,10 +20,12 @@ def retry_with_backoff(
         initial_delay (float): Initial delay in seconds.
         backoff_factor (float): Factor to multiply delay after each failure.
         logger (logging.Logger): Logger for warnings/errors.
+
     Returns:
         Callable: The wrapped function with retry logic.
     """
     def wrapper(*args, **kwargs) -> Any:
+        logger.debug(f"Starting retry_with_backoff for {func.__name__} with max_attempts={max_attempts}.")
         delay = initial_delay
         for attempt in range(1, max_attempts + 1):
             try:

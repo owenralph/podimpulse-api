@@ -13,64 +13,49 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import RidgeCV
 import joblib
 import io
+from utils import validate_http_method, json_response, handle_blob_operation, error_response
 
 def regression(req: func.HttpRequest) -> func.HttpResponse:
     """
     Azure Function endpoint to perform ridge regression on ingested podcast data.
+
     Args:
         req (func.HttpRequest): The HTTP request object.
+
     Returns:
         func.HttpResponse: The HTTP response with regression results or error message.
     """
+    logging.debug("[regression] Received request to perform ridge regression on podcast data.")
     logging.info("Received request for ridge regression analysis.")
-
+    # Validate HTTP method
+    method_error = validate_http_method(req, ["POST"])
+    if method_error:
+        return method_error
     try:
-        if req.method != "POST":
-            return func.HttpResponse(json.dumps({
-                "message": "Method not allowed.",
-                "result": None
-            }), status_code=405)
-
         try:
             request_data = req.get_json()
         except ValueError:
-            return func.HttpResponse(json.dumps({
-                "message": "Invalid JSON body",
-                "result": None
-            }), status_code=400)
-
+            return error_response("Invalid JSON body", 400)
         instance_id: Optional[str] = request_data.get('instance_id')
         target_col: str = request_data.get('target_col', 'Downloads')
-
         if not instance_id:
-            return func.HttpResponse(json.dumps({
-                "message": "Missing instance_id.",
-                "result": None
-            }), status_code=400)
-
+            return error_response("Missing instance_id.", 400)
         # Load blob data with retry
-        try:
-            blob_data = retry_with_backoff(
+        blob_data, err = handle_blob_operation(
+            retry_with_backoff(
                 lambda: load_from_blob_storage(instance_id),
                 exceptions=(RuntimeError, ),
                 max_attempts=3,
                 initial_delay=1.0,
                 backoff_factor=2.0
-            )()
-            json_data = json.loads(blob_data)
-            data = json_data.get("data")
-            if not data:
-                return func.HttpResponse(json.dumps({
-                    "message": "No data found for regression.",
-                    "result": None
-                }), status_code=404)
-        except Exception as e:
-            logging.error(f"Failed to load blob data: {e}", exc_info=True)
-            return func.HttpResponse(json.dumps({
-                "message": "Failed to load blob data.",
-                "result": None
-            }), status_code=500)
-
+            )
+        )
+        if err:
+            return error_response("Failed to load blob data.", 500)
+        json_data = json.loads(blob_data)
+        data = json_data.get("data")
+        if not data:
+            return error_response("No data found for regression.", 404)
         # Convert to DataFrame
         df = pd.DataFrame(data)
 
@@ -370,11 +355,7 @@ def regression(req: func.HttpRequest) -> func.HttpResponse:
                 "actuals": y_test.tolist(),
             }
         }
-        return func.HttpResponse(json.dumps(result), mimetype="application/json", status_code=200)
-
+        return json_response(result, 200)
     except Exception as e:
         logging.error(f"Unexpected error in regression endpoint: {e}", exc_info=True)
-        return func.HttpResponse(json.dumps({
-            "message": "An unexpected error occurred in regression.",
-            "result": None
-        }), status_code=500)
+        return error_response("An unexpected error occurred in regression.", 500)

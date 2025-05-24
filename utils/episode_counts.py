@@ -6,8 +6,11 @@ from kneed import KneeLocator
 import numpy as np
 import pytz
 from datetime import timezone
+from utils import handle_errors, require_columns
+import logging
 
 
+@handle_errors
 def add_episode_counts_and_titles(
     downloads_df: pd.DataFrame,
     episode_data: pd.DataFrame,
@@ -24,6 +27,10 @@ def add_episode_counts_and_titles(
     Returns:
         pd.DataFrame: Updated DataFrame with episode counts, titles, and cluster information.
     """
+    logging.debug(f"Adding episode counts and clustering titles with max_clusters={max_clusters}.")
+    require_columns(downloads_df, ['Date'])
+    require_columns(episode_data, ['Date', 'Title'])
+
     # Ensure both DataFrames have the 'Date' column as datetime64[ns] with UTC
     # Use dayfirst=True and errors='coerce' to robustly parse mixed date formats
     downloads_df['Date'] = pd.to_datetime(downloads_df['Date'], utc=True, dayfirst=True, errors='coerce')
