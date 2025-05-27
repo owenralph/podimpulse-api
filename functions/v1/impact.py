@@ -33,18 +33,15 @@ def impact(req: func.HttpRequest) -> func.HttpResponse:
                 status_code=405
             )
 
-        # Extract and validate inputs
-        token: Optional[str] = req.params.get('token')
-        if not token:
-            error_message = "Missing 'token' in the request."
-            logging.error(error_message)
-            return func.HttpResponse(error_message, status_code=400)
+        podcast_id: Optional[str] = req.route_params.get("podcast_id")
+        if not podcast_id:
+            return func.HttpResponse("Missing podcast_id in path.", status_code=400)
 
         # Retrieve JSON from Blob Storage with retry
         try:
-            json_data = load_json_from_blob(token)
+            json_data = load_json_from_blob(podcast_id)
         except Exception as e:
-            error_message = f"Error retrieving data for token {token}: {e}"
+            error_message = f"Error retrieving data for podcast_id {podcast_id}: {e}"
             logging.error(error_message, exc_info=True)
             return func.HttpResponse("Error retrieving data from storage.", status_code=404)
 

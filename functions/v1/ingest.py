@@ -30,16 +30,19 @@ def ingest(req: func.HttpRequest) -> func.HttpResponse:
     """
     logging.debug("[ingest] Received request for adding episode release counts, clustering spikes, and detecting missing episodes.")
     # Validate HTTP method
-    method_error = validate_http_method(req, ["POST"])
+    method_error = validate_http_method(req, ["POST", "GET", "DELETE"])
     if method_error:
         return method_error
+
+    podcast_id: Optional[str] = req.route_params.get("podcast_id")
+    if not podcast_id:
+        return error_response("Missing podcast_id in path.", 400)
 
     # Determine content type
     content_type = req.headers.get('Content-Type', '')
     is_multipart = content_type.startswith('multipart/form-data')
     request_data = None
     csv_data = None
-    instance_id = None
     csv_url = None
 
     if is_multipart:
@@ -59,12 +62,12 @@ def ingest(req: func.HttpRequest) -> func.HttpResponse:
                 }), status_code=400)
             # Read file content
             csv_data = file.read().decode('utf-8') if hasattr(file, 'read') else file.stream.read().decode('utf-8')
-            # Get instance_id from form data
-            instance_id = req.form.get('instance_id') if hasattr(req, 'form') else None
-            if not instance_id:
-                logging.error("Missing instance_id in form data.")
+            # Get podcast_id from form data
+            podcast_id = req.form.get('podcast_id') if hasattr(req, 'form') else None
+            if not podcast_id:
+                logging.error("Missing podcast_id in form data.")
                 return func.HttpResponse(json.dumps({
-                    "message": "Missing instance_id in form data.",
+                    "message": "Missing podcast_id in form data.",
                     "result": None
                 }), status_code=400)
         except Exception as e:
@@ -84,12 +87,12 @@ def ingest(req: func.HttpRequest) -> func.HttpResponse:
                 "result": None
             }), status_code=400)
         # Validate inputs
-        instance_id = request_data.get('instance_id')
+        podcast_id = request_data.get('podcast_id')
         csv_url = request_data.get('csv_url')
-        if not instance_id:
-            logging.error("Missing instance_id in request body.")
+        if not podcast_id:
+            logging.error("Missing podcast_id in request body.")
             return func.HttpResponse(json.dumps({
-                "message": "Missing instance_id.",
+                "message": "Missing podcast_id.",
                 "result": None
             }), status_code=400)
         if not csv_url:
@@ -102,7 +105,7 @@ def ingest(req: func.HttpRequest) -> func.HttpResponse:
     # Load blob data to retrieve RSS URL with retry
     blob_data, err = handle_blob_operation(
         retry_with_backoff(
-            lambda: load_from_blob_storage(instance_id),
+            lambda: load_from_blob_storage(podcast_id),
             exceptions=(RuntimeError, ),
             max_attempts=3,
             initial_delay=1.0,
@@ -221,7 +224,7 @@ def ingest(req: func.HttpRequest) -> func.HttpResponse:
     # Save updated blob data with retry
     _, err = handle_blob_operation(
         retry_with_backoff(
-            lambda: save_to_blob_storage(json.dumps(json_data), instance_id),
+            lambda: save_to_blob_storage(json.dumps(json_data), podcast_id),
             exceptions=(RuntimeError, ),
             max_attempts=3,
             initial_delay=1.0,
@@ -246,7 +249,7 @@ def ingest(req: func.HttpRequest) -> func.HttpResponse:
         response = {
             "message": "Data processed successfully.",
             "result": {
-                "instance_id": instance_id,
+                "podcast_id": podcast_id,
                 "data": json_data["data"],
                 "potential_missing_episodes": missing_dates_list
             }
@@ -269,3 +272,57 @@ def ingest(req: func.HttpRequest) -> func.HttpResponse:
             "message": "An unexpected error occurred.",
             "result": None
         }), status_code=500)
+
+    # For GET: retrieve and return ingested data
+    if req.method == "GET":
+        try:
+            blob_data, err = handle_blob_operation(
+                retry_with_backoff(
+                    lambda: load_from_blob_storage(podcast_id),
+                    exceptions=(RuntimeError,),
+                    max_attempts=3,
+                    initial_delay=1.0,
+                    backoff_factor=2.0
+                )
+            )
+            if err:
+                return error_response("Failed to load ingested data.", 500)
+            json_data = json.loads(blob_data)
+            return json_response({
+                "message": "Podcast data retrieved successfully.",
+                "result": json_data.get("data", [])
+            }, 200)
+        except Exception as e:
+            logging.error(f"Failed to retrieve ingested data: {e}", exc_info=True)
+            return error_response("Failed to retrieve ingested data.", 500)
+    # For DELETE: clear ingested data
+    if req.method == "DELETE":
+        try:
+            blob_data, err = handle_blob_operation(
+                retry_with_backoff(
+                    lambda: load_from_blob_storage(podcast_id),
+                    exceptions=(RuntimeError,),
+                    max_attempts=3,
+                    initial_delay=1.0,
+                    backoff_factor=2.0
+                )
+            )
+            if err:
+                return error_response("Failed to load blob data.", 500)
+            json_data = json.loads(blob_data)
+            json_data["data"] = []
+            _, err = handle_blob_operation(
+                retry_with_backoff(
+                    lambda: save_to_blob_storage(json.dumps(json_data), podcast_id),
+                    exceptions=(RuntimeError,),
+                    max_attempts=3,
+                    initial_delay=1.0,
+                    backoff_factor=2.0
+                )
+            )
+            if err:
+                return error_response("Failed to clear ingested data.", 500)
+            return func.HttpResponse(status_code=204)
+        except Exception as e:
+            logging.error(f"Failed to clear ingested data: {e}", exc_info=True)
+            return error_response("Failed to clear ingested data.", 500)
