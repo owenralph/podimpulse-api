@@ -1,84 +1,42 @@
-/v1/podcasts:
-  post:
-    summary: Create a new podcast resource.
-    description: >
-      Creates a new podcast and initializes storage for its analytics data.
-    requestBody:
-      required: true
-      content:
-        application/json:
-          schema:
-            type: object
-            required:
-              - title
-              - rss_url
-            properties:
-              title:
-                type: string
-                description: The title of the podcast.
-              rss_url:
-                type: string
-                description: The RSS feed URL for the podcast.
-    responses:
-      '201':
-        description: Podcast created successfully.
+openapi: 3.0.1
+info:
+  title: PodImpulse API
+  version: 1.0.0
+  description: Podcast analytics API
+paths:
+  /v1/podcasts:
+    post:
+      summary: Create a new podcast resource.
+      description: >
+        Creates a new podcast and initializes storage for its analytics data.
+      requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
+              required:
+                - title
+                - rss_url
               properties:
-                message:
+                title:
                   type: string
-                  example: Podcast created successfully.
-                result:
-                  type: object
-                  properties:
-                    podcast_id:
-                      type: string
-                    title:
-                      type: string
-                    rss_url:
-                      type: string
-      '400':
-        description: Missing or invalid title or rss_url.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
+                  description: The title of the podcast.
+                rss_url:
                   type: string
-                result:
-                  type: object
-      '500':
-        description: Internal server error.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-  get:
-    summary: List all podcasts
-    description: >
-      Retrieves a list of all podcasts and their metadata.
-    responses:
-      '200':
-        description: List of podcasts retrieved successfully.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                  example: Podcasts retrieved successfully.
-                result:
-                  type: array
-                  items:
+                  description: The RSS feed URL for the podcast.
+      responses:
+        '201':
+          description: Podcast created successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Podcast created successfully.
+                  result:
                     type: object
                     properties:
                       podcast_id:
@@ -87,23 +45,67 @@
                         type: string
                       rss_url:
                         type: string
-      '500':
-        description: Internal server error.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
+        '400':
+          description: Missing or invalid title or rss_url.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+    get:
+      summary: List all podcasts
+      description: >
+        Retrieves a list of all podcasts and their metadata.
+      responses:
+        '200':
+          description: List of podcasts retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Podcasts retrieved successfully.
+                  result:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        podcast_id:
+                          type: string
+                        title:
+                          type: string
+                        rss_url:
+                          type: string
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
 
-/v1/podcasts/{podcast_id}:
-  get:
-    summary: Retrieve a podcast by ID
-    description: >
-      Retrieves metadata for a specific podcast, including its RSS URL.
+  /v1/podcasts/{podcast_id}:
     parameters:
       - in: path
         name: podcast_id
@@ -111,749 +113,624 @@
           type: string
         required: true
         description: The podcast ID.
-    responses:
-      '200':
-        description: Podcast retrieved successfully.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                  example: Podcast retrieved successfully.
-                result:
-                  type: object
-                  properties:
-                    podcast_id:
-                      type: string
-                    title:
-                      type: string
-                    rss_url:
-                      type: string
-      '404':
-        description: Podcast not found.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-      '500':
-        description: Internal server error.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-  put:
-    summary: Replace a podcast by ID
-    description: >
-      Replaces the podcast metadata, including RSS URL, for the specified podcast.
-    parameters:
-      - in: path
-        name: podcast_id
-        schema:
-          type: string
+    get:
+      summary: Retrieve a podcast by ID
+      description: >
+        Retrieves metadata for a specific podcast, including its RSS URL.
+      responses:
+        '200':
+          description: Podcast retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Podcast retrieved successfully.
+                  result:
+                    type: object
+                    properties:
+                      podcast_id:
+                        type: string
+                      title:
+                        type: string
+                      rss_url:
+                        type: string
+        '404':
+          description: Podcast not found.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+    put:
+      summary: Replace a podcast by ID
+      description: >
+        Replaces the podcast metadata, including RSS URL, for the specified podcast.
+      requestBody:
         required: true
-        description: The podcast ID.
-    requestBody:
-      required: true
-      content:
-        application/json:
-          schema:
-            type: object
-            required:
-              - title
-              - rss_url
-            properties:
-              title:
-                type: string
-              rss_url:
-                type: string
-    responses:
-      '200':
-        description: Podcast replaced successfully.
         content:
           application/json:
             schema:
               type: object
+              required:
+                - title
+                - rss_url
               properties:
-                message:
+                title:
                   type: string
-                  example: Podcast replaced successfully.
-                result:
-                  type: object
-                  properties:
-                    podcast_id:
-                      type: string
-                    title:
-                      type: string
-                    rss_url:
-                      type: string
-      '400':
-        description: Missing or invalid title or rss_url.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
+                rss_url:
                   type: string
-                result:
-                  type: object
-      '404':
-        description: Podcast not found.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-      '500':
-        description: Internal server error.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-  patch:
-    summary: Partially update a podcast by ID
-    description: >
-      Partially updates the podcast metadata, including RSS URL, for the specified podcast.
-    parameters:
-      - in: path
-        name: podcast_id
-        schema:
-          type: string
+      responses:
+        '200':
+          description: Podcast replaced successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Podcast replaced successfully.
+                  result:
+                    type: object
+                    properties:
+                      podcast_id:
+                        type: string
+                      title:
+                        type: string
+                      rss_url:
+                        type: string
+        '400':
+          description: Missing or invalid title or rss_url.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '404':
+          description: Podcast not found.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+    patch:
+      summary: Partially update a podcast by ID
+      description: >
+        Partially updates the podcast metadata, including RSS URL, for the specified podcast.
+      requestBody:
         required: true
-        description: The podcast ID.
-    requestBody:
-      required: true
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              title:
-                type: string
-              rss_url:
-                type: string
-    responses:
-      '200':
-        description: Podcast updated successfully.
         content:
           application/json:
             schema:
               type: object
               properties:
-                message:
+                title:
                   type: string
-                  example: Podcast updated successfully.
-                result:
-                  type: object
-                  properties:
-                    podcast_id:
-                      type: string
-                    title:
-                      type: string
-                    rss_url:
-                      type: string
-      '400':
-        description: Invalid input.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
+                rss_url:
                   type: string
-                result:
-                  type: object
-      '404':
-        description: Podcast not found.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-      '500':
-        description: Internal server error.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-  delete:
-    summary: Delete a podcast by ID
-    description: >
-      Deletes a specific podcast and all associated data.
-    parameters:
-      - in: path
-        name: podcast_id
-        schema:
-          type: string
-        required: true
-        description: The podcast ID.
-    responses:
-      '204':
-        description: Podcast deleted successfully.
-      '404':
-        description: Podcast not found.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-      '500':
-        description: Internal server error.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
+      responses:
+        '200':
+          description: Podcast updated successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Podcast updated successfully.
+                  result:
+                    type: object
+                    properties:
+                      podcast_id:
+                        type: string
+                      title:
+                        type: string
+                      rss_url:
+                        type: string
+        '400':
+          description: Invalid input.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '404':
+          description: Podcast not found.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+    delete:
+      summary: Delete a podcast by ID
+      description: >
+        Deletes a specific podcast and all associated data.
+      responses:
+        '204':
+          description: Podcast deleted successfully.
+        '404':
+          description: Podcast not found.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
 
-/v1/podcasts/{podcast_id}/ingest:
-  post:
-    summary: Ingest podcast data, process CSV and RSS, and update blob storage.
-    description: >
-      Accepts either a CSV file upload (multipart/form-data) or a JSON body with a CSV URL.
-      Processes the data, enriches it with episode counts, clustering, missing episode detection, and seasonality features, and updates the instance's blob storage.
-    requestBody:
-      required: true
-      content:
-        multipart/form-data:
-          schema:
-            type: object
-            properties:
-              file:
-                type: string
-                format: binary
-                description: CSV file containing podcast download data.
-              podcast_id:
-                type: string
-                description: The podcast ID.
-        application/json:
-          schema:
-            type: object
-            properties:
-              podcast_id:
-                type: string
-                description: The podcast ID.
-              csv_url:
-                type: string
-                description: URL to a CSV file containing podcast download data.
-    responses:
-      '200':
-        description: Data processed successfully.
+  /v1/podcasts/{podcast_id}/ingest:
+    parameters:
+      - in: path
+        name: podcast_id
+        schema:
+          type: string
+        required: true
+        description: The podcast ID.
+    post:
+      summary: Ingest podcast data, process CSV and RSS, and update blob storage.
+      description: >
+        Accepts either a CSV file upload (multipart/form-data) or a JSON body with a CSV URL.
+        Processes the data, enriches it with episode counts, clustering, missing episode detection, and seasonality features, and updates the instance's blob storage.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: CSV file containing podcast download data.
+          application/json:
+            schema:
+              type: object
+              properties:
+                csv_url:
+                  type: string
+                  description: URL to a CSV file containing podcast download data.
+      responses:
+        '200':
+          description: Data processed successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Data processed successfully.
+                  result:
+                    type: object
+                    properties:
+                      podcast_id:
+                        type: string
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          description: Processed podcast data row.
+                      potential_missing_episodes:
+                        type: array
+                        items:
+                          type: string
+                          format: date
+        '400':
+          description: Bad request (missing or invalid input).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '404':
+          description: RSS feed URL not set.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+    get:
+      summary: Retrieve ingested podcast data
+      description: >
+        Retrieves the processed podcast data for the given podcast.
+      responses:
+        '200':
+          description: Podcast data retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Podcast data retrieved successfully.
+                  result:
+                    type: object
+                    properties:
+                      podcast_id:
+                        type: string
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          description: Processed podcast data row.
+        '404':
+          description: Podcast data not found.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+    delete:
+      summary: Delete ingested podcast data
+      description: >
+        Deletes the processed podcast data for the given podcast.
+      responses:
+        '204':
+          description: Podcast data deleted successfully.
+        '404':
+          description: Podcast data not found.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+
+  /v1/podcasts/{podcast_id}/missing:
+    parameters:
+      - in: path
+        name: podcast_id
+        schema:
+          type: string
+        required: true
+        description: The podcast ID.
+    get:
+      summary: Retrieve potential missing podcast episodes.
+      description: >
+        Returns a list of dates for potential missing episodes for the given podcast.
+      responses:
+        '200':
+          description: Missing episodes retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Missing episodes retrieved successfully.
+                  result:
+                    type: object
+                    properties:
+                      potential_missing_episodes:
+                        type: array
+                        items:
+                          type: string
+                          format: date-time
+        '400':
+          description: Missing or invalid podcast_id.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+
+    post:
+      summary: Update missing episode status for a podcast.
+      description: >
+        Accepts a list of updates (date and accepted flag) to mark missing episodes as accepted or not.
+      requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
               properties:
-                message:
-                  type: string
-                  example: Data processed successfully.
-                result:
-                  type: object
-                  properties:
-                    podcast_id:
-                      type: string
-                    data:
-                      type: array
-                      items:
-                        type: object
-                        description: Processed podcast data row.
-                    potential_missing_episodes:
-                      type: array
-                      items:
+                updates:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      date:
                         type: string
                         format: date
-      '400':
-        description: Bad request (missing or invalid input).
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-      '404':
-        description: RSS feed URL not set.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-      '500':
-        description: Internal server error.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-  get:
-    summary: Retrieve ingested podcast data
-    description: >
-      Retrieves the processed podcast data for the given podcast.
-    parameters:
-      - in: path
-        name: podcast_id
-        schema:
-          type: string
-        required: true
-        description: The podcast ID.
-    responses:
-      '200':
-        description: Podcast data retrieved successfully.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                  example: Podcast data retrieved successfully.
-                result:
-                  type: object
-                  properties:
-                    podcast_id:
-                      type: string
-                    data:
-                      type: array
-                      items:
-                        type: object
-                        description: Processed podcast data row.
-      '404':
-        description: Podcast data not found.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-      '500':
-        description: Internal server error.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-  delete:
-    summary: Delete ingested podcast data
-    description: >
-      Deletes the processed podcast data for the given podcast.
-    parameters:
-      - in: path
-        name: podcast_id
-        schema:
-          type: string
-        required: true
-        description: The podcast ID.
-    responses:
-      '204':
-        description: Podcast data deleted successfully.
-      '404':
-        description: Podcast data not found.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-      '500':
-        description: Internal server error.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-
-/v1/podcasts/{podcast_id}/missing:
-  get:
-    summary: Retrieve potential missing podcast episodes.
-    description: >
-      Returns a list of dates for potential missing episodes for the given podcast.
-    parameters:
-      - in: query
-        name: podcast_id
-        schema:
-          type: string
-        required: true
-        description: The podcast ID.
-    responses:
-      '200':
-        description: Missing episodes retrieved successfully.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                  example: Missing episodes retrieved successfully.
-                result:
-                  type: object
-                  properties:
-                    potential_missing_episodes:
-                      type: array
-                      items:
+                      accepted:
+                        type: boolean
+                  description: List of updates, or the string "ALL" to accept all missing episodes.
+      responses:
+        '200':
+          description: Updates applied successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Updates applied successfully.
+                  result:
+                    type: object
+                    properties:
+                      podcast_id:
                         type: string
-                        format: date-time
-      '400':
-        description: Missing or invalid podcast_id.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-      '500':
-        description: Internal server error.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-
-  post:
-    summary: Update missing episode status for a podcast.
-    description: >
-      Accepts a list of updates (date and accepted flag) to mark missing episodes as accepted or not.
-    requestBody:
-      required: true
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              podcast_id:
-                type: string
-                description: The podcast ID.
-              updates:
-                type: array
-                items:
-                  type: object
-                  properties:
-                    date:
-                      type: string
-                      format: date
-                    accepted:
-                      type: boolean
-                description: List of updates, or the string "ALL" to accept all missing episodes.
-    responses:
-      '200':
-        description: Updates applied successfully.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                  example: Updates applied successfully.
-                result:
-                  type: object
-                  properties:
-                    podcast_id:
-                      type: string
-                    data:
-                      type: array
-                      items:
-                        type: object
-                        description: Updated podcast data row.
-                    potential_missing_episodes:
-                      type: array
-                      items:
-                        type: string
-                        format: date-time
-      '400':
-        description: Invalid input or update format.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-      '500':
-        description: Internal server error.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-  put:
-    summary: Replace missing episode status for a podcast.
-    description: >
-      Replaces the missing episode status for the given podcast with the provided updates.
-    requestBody:
-      required: true
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              updates:
-                type: array
-                items:
-                  type: object
-                  properties:
-                    date:
-                      type: string
-                      format: date
-                    accepted:
-                      type: boolean
-                description: List of updates, or the string "ALL" to accept all missing episodes.
-    parameters:
-      - in: path
-        name: podcast_id
-        schema:
-          type: string
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          description: Updated podcast data row.
+                      potential_missing_episodes:
+                        type: array
+                        items:
+                          type: string
+                          format: date-time
+        '400':
+          description: Invalid input or update format.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+    put:
+      summary: Replace missing episode status for a podcast.
+      description: >
+        Replaces the missing episode status for the given podcast with the provided updates.
+      requestBody:
         required: true
-        description: The podcast ID.
-    responses:
-      '200':
-        description: Missing episode status replaced successfully.
         content:
           application/json:
             schema:
               type: object
               properties:
-                message:
-                  type: string
-                  example: Missing episode status replaced successfully.
-                result:
-                  type: object
-                  properties:
-                    podcast_id:
-                      type: string
-                    data:
-                      type: array
-                      items:
-                        type: object
-                        description: Updated podcast data row.
-                    potential_missing_episodes:
-                      type: array
-                      items:
-                        type: string
-                        format: date-time
-      '400':
-        description: Invalid input or update format.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-      '404':
-        description: Podcast not found.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-      '500':
-        description: Internal server error.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-  delete:
-    summary: Delete all missing episode status for a podcast.
-    description: >
-      Deletes all missing episode status records for the given podcast.
-    parameters:
-      - in: path
-        name: podcast_id
-        schema:
-          type: string
-        required: true
-        description: The podcast ID.
-    responses:
-      '204':
-        description: All missing episode status deleted successfully.
-      '404':
-        description: Podcast not found.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-      '500':
-        description: Internal server error.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-
-/v1/podcasts/{podcast_id}/predict:
-  post:
-    summary: Advanced forecasting and optimization for podcast episodes.
-    description: >
-      Provides advanced forecasting and episode release optimization using a trained regression model.
-    requestBody:
-      required: true
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              podcast_id:
-                type: string
-                description: The podcast ID.
-              episodes:
-                type: integer
-                description: Number of episodes to optimize for (optional).
-              release_dates:
-                type: array
-                items:
-                  type: string
-                  format: date
-                description: List of planned release dates (optional).
-    responses:
-      '200':
-        description: Prediction completed successfully.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                  example: Prediction completed successfully.
-                result:
+                updates:
                   type: array
                   items:
                     type: object
-                    description: Predicted podcast data row.
-                total_downloads:
-                  type: number
-      '400':
-        description: Invalid input or missing podcast_id.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-      '404':
-        description: No data found for prediction.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-      '500':
-        description: Internal server error.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-  get:
-    summary: Retrieve prediction results for a podcast.
-    description: >
-      Retrieves the most recent prediction results for the given podcast.
+                    properties:
+                      date:
+                        type: string
+                        format: date
+                      accepted:
+                        type: boolean
+                  description: List of updates, or the string "ALL" to accept all missing episodes.
+      responses:
+        '200':
+          description: Missing episode status replaced successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Missing episode status replaced successfully.
+                  result:
+                    type: object
+                    properties:
+                      podcast_id:
+                        type: string
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          description: Updated podcast data row.
+                      potential_missing_episodes:
+                        type: array
+                        items:
+                          type: string
+                          format: date-time
+        '400':
+          description: Invalid input or update format.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '404':
+          description: Podcast not found.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+    delete:
+      summary: Delete all missing episode status for a podcast.
+      description: >
+        Deletes all missing episode status records for the given podcast.
+      responses:
+        '204':
+          description: All missing episode status deleted successfully.
+        '404':
+          description: Podcast not found.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+
+  /v1/podcasts/{podcast_id}/predict:
     parameters:
       - in: path
         name: podcast_id
@@ -861,140 +738,123 @@
           type: string
         required: true
         description: The podcast ID.
-    responses:
-      '200':
-        description: Prediction results retrieved successfully.
+    post:
+      summary: Advanced forecasting and optimization for podcast episodes.
+      description: >
+        Provides advanced forecasting and episode release optimization using a trained regression model.
+      requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
               properties:
-                message:
-                  type: string
-                  example: Prediction results retrieved successfully.
-                result:
+                episodes:
+                  type: integer
+                  description: Number of episodes to optimize for (optional).
+                release_dates:
                   type: array
                   items:
+                    type: string
+                    format: date
+                  description: List of planned release dates (optional).
+      responses:
+        '200':
+          description: Prediction completed successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Prediction completed successfully.
+                  result:
+                    type: array
+                    items:
+                      type: object
+                      description: Predicted podcast data row.
+                  total_downloads:
+                    type: number
+        '400':
+          description: Invalid input or missing podcast_id.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
                     type: object
-                    description: Predicted podcast data row.
-                total_downloads:
-                  type: number
-      '404':
-        description: Prediction results not found.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-      '500':
-        description: Internal server error.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-
-/v1/podcasts/{podcast_id}/regression:
-  post:
-    summary: Perform ridge regression on podcast data.
-    description: >
-      Trains a ridge regression model on the ingested podcast data and returns model statistics and predictions.
-    requestBody:
-      required: true
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              podcast_id:
-                type: string
-                description: The podcast ID.
-              target_col:
-                type: string
-                description: The target column for regression (default: Downloads).
-    responses:
-      '200':
-        description: Regression completed successfully.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                  example: Regression completed successfully.
-                result:
-                  type: object
-                  properties:
-                    score:
-                      type: number
-                    intercept:
-                      type: number
-                    coefficients:
+        '404':
+          description: No data found for prediction.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+    get:
+      summary: Retrieve prediction results for a podcast.
+      description: >
+        Retrieves the most recent prediction results for the given podcast.
+      responses:
+        '200':
+          description: Prediction results retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Prediction results retrieved successfully.
+                  result:
+                    type: array
+                    items:
                       type: object
-                    n_train:
-                      type: integer
-                    n_test:
-                      type: integer
-                    selected_features:
-                      type: array
-                      items:
-                        type: string
-                    best_alpha:
-                      type: number
-                    predictions:
-                      type: array
-                      items:
-                        type: number
-                    actuals:
-                      type: array
-                      items:
-                        type: number
-      '400':
-        description: Invalid input or missing podcast_id.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-      '404':
-        description: No data found for regression.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-      '500':
-        description: Internal server error.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-  get:
-    summary: Retrieve regression results for a podcast.
-    description: >
-      Retrieves the most recent regression results for the given podcast.
+                      description: Predicted podcast data row.
+                  total_downloads:
+                    type: number
+        '404':
+          description: Prediction results not found.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+
+  /v1/podcasts/{podcast_id}/regression:
     parameters:
       - in: path
         name: podcast_id
@@ -1002,271 +862,353 @@
           type: string
         required: true
         description: The podcast ID.
-    responses:
-      '200':
-        description: Regression results retrieved successfully.
+    post:
+      summary: Perform ridge regression on podcast data.
+      description: >
+        Trains a ridge regression model on the ingested podcast data and returns model statistics and predictions.
+      requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
               properties:
-                message:
+                target_col:
                   type: string
-                  example: Regression results retrieved successfully.
-                result:
-                  type: object
-                  properties:
-                    score:
-                      type: number
-                    intercept:
-                      type: number
-                    coefficients:
-                      type: object
-                    n_train:
-                      type: integer
-                    n_test:
-                      type: integer
-                    selected_features:
-                      type: array
-                      items:
-                        type: string
-                    best_alpha:
-                      type: number
-                    predictions:
-                      type: array
-                      items:
+                  description: "The target column for regression (default: Downloads)."
+      responses:
+        '200':
+          description: Regression completed successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Regression completed successfully.
+                  result:
+                    type: object
+                    properties:
+                      score:
                         type: number
-                    actuals:
-                      type: array
-                      items:
+                      intercept:
                         type: number
-      '404':
-        description: Regression results not found.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-      '500':
-        description: Internal server error.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
+                      coefficients:
+                        type: object
+                      n_train:
+                        type: integer
+                      n_test:
+                        type: integer
+                      selected_features:
+                        type: array
+                        items:
+                          type: string
+                      best_alpha:
+                        type: number
+                      predictions:
+                        type: array
+                        items:
+                          type: number
+                      actuals:
+                        type: array
+                        items:
+                          type: number
+        '400':
+          description: Invalid input or missing podcast_id.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '404':
+          description: No data found for regression.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+    get:
+      summary: Retrieve regression results for a podcast.
+      description: >
+        Retrieves the most recent regression results for the given podcast.
+      responses:
+        '200':
+          description: Regression results retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Regression results retrieved successfully.
+                  result:
+                    type: object
+                    properties:
+                      score:
+                        type: number
+                      intercept:
+                        type: number
+                      coefficients:
+                        type: object
+                      n_train:
+                        type: integer
+                      n_test:
+                        type: integer
+                      selected_features:
+                        type: array
+                        items:
+                          type: string
+                      best_alpha:
+                        type: number
+                      predictions:
+                        type: array
+                        items:
+                          type: number
+                      actuals:
+                        type: array
+                        items:
+                          type: number
+        '404':
+          description: Regression results not found.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
 
-/v1/podcasts/{podcast_id}/trend:
-  get:
-    summary: Calculate trend with rolling average and line of best fit.
-    description: >
-      Returns a rolling average and line of best fit for podcast downloads over time.
+  /v1/podcasts/{podcast_id}/trend:
     parameters:
-      - in: query
-        name: token
+      - in: path
+        name: podcast_id
         schema:
           type: string
         required: true
-        description: The instance token for the podcast data.
-      - in: query
-        name: days
-        schema:
-          type: integer
-        required: true
-        description: The window size (in days) for the rolling average.
-    responses:
-      '200':
-        description: Trend calculation completed successfully.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                  example: Trend calculation completed successfully.
-                result:
-                  type: object
-                  properties:
-                    trend_data:
-                      type: array
-                      items:
+        description: The podcast ID.
+    get:
+      summary: Calculate trend with rolling average and line of best fit.
+      description: >
+        Returns a rolling average and line of best fit for podcast downloads over time.
+      parameters:
+        - in: query
+          name: token
+          schema:
+            type: string
+          required: true
+          description: The instance token for the podcast data.
+        - in: query
+          name: days
+          schema:
+            type: integer
+          required: true
+          description: The window size (in days) for the rolling average.
+      responses:
+        '200':
+          description: Trend calculation completed successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Trend calculation completed successfully.
+                  result:
+                    type: object
+                    properties:
+                      trend_data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            date:
+                              type: string
+                              format: date-time
+                            rolling_average:
+                              type: number
+                            line_of_best_fit:
+                              type: number
+                      trend_line:
                         type: object
                         properties:
-                          date:
-                            type: string
-                            format: date-time
-                          rolling_average:
+                          slope:
                             type: number
-                          line_of_best_fit:
+                          intercept:
                             type: number
-                    trend_line:
-                      type: object
-                      properties:
-                        slope:
-                          type: number
-                        intercept:
-                          type: number
-      '400':
-        description: Missing or invalid input.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-      '404':
-        description: Data not found.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-      '500':
-        description: Internal server error.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-  put:
-    summary: Replace trend calculation parameters for a podcast.
-    description: >
-      Replaces the trend calculation parameters for the given podcast.
-    requestBody:
-      required: true
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              days:
-                type: integer
-                description: The window size (in days) for the rolling average.
-    parameters:
-      - in: path
-        name: podcast_id
-        schema:
-          type: string
+        '400':
+          description: Missing or invalid input.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '404':
+          description: Data not found.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+    put:
+      summary: Replace trend calculation parameters for a podcast.
+      description: >
+        Replaces the trend calculation parameters for the given podcast.
+      requestBody:
         required: true
-        description: The podcast ID.
-    responses:
-      '200':
-        description: Trend calculation parameters replaced successfully.
         content:
           application/json:
             schema:
               type: object
               properties:
-                message:
-                  type: string
-                  example: Trend calculation parameters replaced successfully.
-                result:
-                  type: object
-                  properties:
-                    trend_data:
-                      type: array
-                      items:
+                days:
+                  type: integer
+                  description: The window size (in days) for the rolling average.
+      responses:
+        '200':
+          description: Trend calculation parameters replaced successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Trend calculation parameters replaced successfully.
+                  result:
+                    type: object
+                    properties:
+                      trend_data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            date:
+                              type: string
+                              format: date-time
+                            rolling_average:
+                              type: number
+                            line_of_best_fit:
+                              type: number
+                      trend_line:
                         type: object
                         properties:
-                          date:
-                            type: string
-                            format: date-time
-                          rolling_average:
+                          slope:
                             type: number
-                          line_of_best_fit:
+                          intercept:
                             type: number
-                    trend_line:
-                      type: object
-                      properties:
-                        slope:
-                          type: number
-                        intercept:
-                          type: number
-      '400':
-        description: Missing or invalid input.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-      '404':
-        description: Podcast not found.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-      '500':
-        description: Internal server error.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-  delete:
-    summary: Delete trend calculation data for a podcast.
-    description: >
-      Deletes the trend calculation data for the given podcast.
-    parameters:
-      - in: path
-        name: podcast_id
-        schema:
-          type: string
-        required: true
-        description: The podcast ID.
-    responses:
-      '204':
-        description: Trend calculation data deleted successfully.
-      '404':
-        description: Podcast not found.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
-      '500':
-        description: Internal server error.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                result:
-                  type: object
+        '400':
+          description: Missing or invalid input.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '404':
+          description: Podcast not found.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+    delete:
+      summary: Delete trend calculation data for a podcast.
+      description: >
+        Deletes the trend calculation data for the given podcast.
+      responses:
+        '204':
+          description: Trend calculation data deleted successfully.
+        '404':
+          description: Podcast not found.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object

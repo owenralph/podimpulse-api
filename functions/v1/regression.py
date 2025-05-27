@@ -356,10 +356,44 @@ def regression(req: func.HttpRequest) -> func.HttpResponse:
                     "actuals": y_test.tolist(),
                 }
             }
+            # Save regression result as JSON blob for GET endpoint
+            try:
+                regression_result_blob = f"{podcast_id}_regression_result.json"
+                retry_with_backoff(
+                    lambda: save_to_blob_storage(json.dumps(result).encode("utf-8"), regression_result_blob),
+                    exceptions=(RuntimeError,),
+                    max_attempts=3,
+                    initial_delay=1.0,
+                    backoff_factor=2.0
+                )()
+                logging.info(f"Regression result saved to blob: {regression_result_blob}")
+            except Exception as e:
+                logging.error(f"Failed to save regression result to blob: {e}", exc_info=True)
             return json_response(result, 200)
         elif req.method == "GET":
-            # Retrieve most recent regression results (implement as needed)
-            return error_response("GET /regression not implemented yet.", 501)
+            # Retrieve most recent regression results
+            regression_result_blob = f"{podcast_id}_regression_result.json"
+            try:
+                blob_data, err = handle_blob_operation(
+                    retry_with_backoff(
+                        lambda: load_from_blob_storage(regression_result_blob),
+                        exceptions=(RuntimeError,),
+                        max_attempts=3,
+                        initial_delay=1.0,
+                        backoff_factor=2.0
+                    )
+                )
+                if err or not blob_data:
+                    return error_response("No regression results found for this podcast. Run POST first.", 404)
+                try:
+                    result = json.loads(blob_data)
+                except Exception as e:
+                    logging.error(f"Failed to parse regression result blob: {e}", exc_info=True)
+                    return error_response("Failed to parse regression result.", 500)
+                return json_response(result, 200)
+            except Exception as e:
+                logging.error(f"Failed to load regression result blob: {e}", exc_info=True)
+                return error_response("Failed to load regression result.", 500)
         else:
             return error_response("Method Not Allowed", 405)
     except Exception as e:
