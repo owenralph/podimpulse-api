@@ -9,15 +9,11 @@ from utils.azure_blob import save_to_blob_storage, load_from_blob_storage
 
 def initialize(req: func.HttpRequest) -> func.HttpResponse:
     """
-    Azure Function endpoint to initialize a new instance and create an empty blob.
-
-    Args:
-        req (func.HttpRequest): The HTTP request object.
-
-    Returns:
-        func.HttpResponse: The HTTP response with the new instance ID or error message.
+    Azure Function endpoint to create a new podcast resource (POST /v1/podcasts).
+    Accepts 'title' and 'rss_url' in the request body, stores them in a new blob, and returns podcast_id, title, and rss_url.
+    Ensures idempotency and checks for duplicates, similar to the old /rss logic.
     """
-    logging.debug("[initialize] Received request to initialize a new instance.")
+    logging.debug("[initialize] Received request to create a new podcast.")
     start_time = time.time()
 
     # Validate HTTP method
@@ -25,27 +21,62 @@ def initialize(req: func.HttpRequest) -> func.HttpResponse:
     if method_error:
         return method_error
 
-    # Create an empty JSON object
-    empty_json = "{}"
+    # Parse and validate request body
+    try:
+        request_data = req.get_json()
+    except Exception:
+        return error_response("Invalid JSON body.", 400)
+    title = request_data.get("title")
+    rss_url = request_data.get("rss_url")
+    if not title or not rss_url:
+        return error_response("Missing or invalid title or rss_url.", 400)
 
-    # Save the empty JSON to Azure Blob Storage with retry
+    # Check for duplicate podcast by title or rss_url (optional, but good RESTful practice)
+    # This requires listing all blobs and checking their contents
+    try:
+        from utils.azure_blob import list_all_blob_ids
+        existing_ids = list_all_blob_ids()
+        for pid in existing_ids:
+            blob_data, err = handle_blob_operation(
+                retry_with_backoff(
+                    lambda: load_from_blob_storage(pid),
+                    exceptions=(RuntimeError,),
+                    max_attempts=2,
+                    initial_delay=0.5,
+                    backoff_factor=2.0
+                )
+            )
+            if not err:
+                try:
+                    pdata = json.loads(blob_data)
+                    if pdata.get("title") == title or pdata.get("rss_url") == rss_url:
+                        return error_response("Podcast with this title or rss_url already exists.", 409)
+                except Exception:
+                    continue
+    except Exception as e:
+        logging.warning(f"Could not check for duplicates: {e}")
+
+    # Create podcast metadata JSON
+    podcast_metadata = json.dumps({"title": title, "rss_url": rss_url})
+
+    # Save the podcast metadata to Azure Blob Storage with retry
     save_start = time.time()
-    instance_id, err = handle_blob_operation(
-        retry_with_backoff(lambda: save_to_blob_storage(empty_json), exceptions=(RuntimeError,), max_attempts=3, initial_delay=1.0, backoff_factor=2.0)
+    podcast_id, err = handle_blob_operation(
+        retry_with_backoff(lambda: save_to_blob_storage(podcast_metadata), exceptions=(RuntimeError,), max_attempts=3, initial_delay=1.0, backoff_factor=2.0)
     )
     if err:
-        return error_response("Failed to initialize instance.", 500)
+        return error_response("Failed to create podcast.", 500)
     save_duration = time.time() - save_start
-    logging.info(f"Blob save completed in {save_duration:.2f} seconds.")
+    logging.info(f"Podcast blob save completed in {save_duration:.2f} seconds.")
 
-    # Return the instance ID in a JSON response
+    # Return the podcast_id, title, and rss_url in a JSON response
     response_data = {
-        "message": "Instance initialized successfully.",
-        "result": {"instance_id": instance_id}
+        "message": "Podcast created successfully.",
+        "result": {"podcast_id": podcast_id, "title": title, "rss_url": rss_url}
     }
     total_duration = time.time() - start_time
     logging.info(f"Total function execution time: {total_duration:.2f} seconds.")
-    return json_response(response_data, 200)
+    return json_response(response_data, 201)
 
 def podcast_resource(req: func.HttpRequest) -> func.HttpResponse:
     """
