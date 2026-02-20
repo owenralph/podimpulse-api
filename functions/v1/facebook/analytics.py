@@ -1,7 +1,7 @@
 import azure.functions as func
-import json
 import requests
 import logging
+from utils import validate_http_method, json_response, error_response
 
 
 def query_reels_analytics(req: func.HttpRequest) -> func.HttpResponse:
@@ -15,15 +15,19 @@ def query_reels_analytics(req: func.HttpRequest) -> func.HttpResponse:
         func.HttpResponse: The HTTP response with analytics data or error message.
     """
     logging.debug("[query_reels_analytics] Received request to query Facebook Reels analytics.")
+    method_error = validate_http_method(req, ["POST"])
+    if method_error:
+        return method_error
+
     try:
         body = req.get_json()
+    except ValueError:
+        return error_response("Invalid JSON body.", 400)
+
+    try:
         page_token = body.get("page_token")
         if not page_token:
-            return func.HttpResponse(
-                json.dumps({"error": "Missing 'page_token' parameter."}),
-                mimetype="application/json",
-                status_code=400
-            )
+            return error_response("Missing 'page_token' parameter.", 400)
 
         # Define endpoint and parameters
         reels_url = "https://graph.facebook.com/v20.0/me/video_reels"
@@ -34,7 +38,7 @@ def query_reels_analytics(req: func.HttpRequest) -> func.HttpResponse:
         }
 
         # Fetch Reels data
-        reels_response = requests.get(reels_url, params=reels_params)
+        reels_response = requests.get(reels_url, params=reels_params, timeout=10)
         reels_response.raise_for_status()
 
         # Parse Reels data
@@ -59,15 +63,10 @@ def query_reels_analytics(req: func.HttpRequest) -> func.HttpResponse:
 
             processed_reels.append(reel_details)
 
-        return func.HttpResponse(
-            json.dumps({"status": "success", "reels": processed_reels}),
-            mimetype="application/json",
-            status_code=200
-        )
+        return json_response({"status": "success", "reels": processed_reels}, 200)
+    except requests.RequestException as e:
+        logging.error(f"Facebook API error querying reels analytics: {e}", exc_info=True)
+        return error_response("Facebook API request failed.", 502)
     except Exception as e:
         logging.error(f"Error querying Reels analytics: {e}", exc_info=True)
-        return func.HttpResponse(
-            json.dumps({"error": str(e)}),
-            mimetype="application/json",
-            status_code=500
-        )
+        return error_response("Error querying reels analytics.", 500)

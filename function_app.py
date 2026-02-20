@@ -53,19 +53,19 @@ def predict_endpoint(req: func.HttpRequest) -> func.HttpResponse:
 """""""""
 Facebook connection
 """""""""
-@app.route(route="v1/facebook/exchange_user_token")
+@app.route(route="v1/facebook/exchange_user_token", methods=["POST"])
 def exchange_user_token(req: func.HttpRequest) -> func.HttpResponse:
     return exchange_user_token_handler(req)
 
-@app.route(route="v1/facebook/get_user_pages")
+@app.route(route="v1/facebook/get_user_pages", methods=["POST"])
 def get_user_pages(req: func.HttpRequest) -> func.HttpResponse:
     return get_user_pages_handler(req)
 
-@app.route(route="v1/facebook/get_page_token")
+@app.route(route="v1/facebook/get_page_token", methods=["POST"])
 def get_page_token(req: func.HttpRequest) -> func.HttpResponse:
     return get_page_token_handler(req)
 
-@app.route(route="v1/facebook/query_page_analytics")
+@app.route(route="v1/facebook/query_page_analytics", methods=["POST"])
 def query_page_analytics(req: func.HttpRequest) -> func.HttpResponse:
     return query_page_analytics_handler(req)
 
