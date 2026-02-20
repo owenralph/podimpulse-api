@@ -3,7 +3,6 @@ from utils import validate_http_method, json_response, handle_blob_operation, er
 import logging
 import json
 import time
-from typing import Optional
 from utils.retry import retry_with_backoff
 from utils.azure_blob import save_to_blob_storage, load_from_blob_storage
 

@@ -2,10 +2,8 @@ import pandas as pd
 import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
-import matplotlib.pyplot as plt
 from kneed import KneeLocator
 import logging
-from typing import Any
 from utils import handle_errors, require_columns
 
 

@@ -122,7 +122,6 @@ def impact(req: func.HttpRequest) -> func.HttpResponse:
         # Analyze results (keep original logic for impact summary)
         try:
             results = []
-            significance_level = 0.05
             for i, predictor in enumerate(predictors):
                 coef = coefs.get(predictor, 0.0)
                 # Ridge does not provide p-values; just report all coefficients

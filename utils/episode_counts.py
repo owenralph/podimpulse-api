@@ -1,11 +1,8 @@
-from typing import List
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
 from kneed import KneeLocator
-import numpy as np
 import pytz
-from datetime import timezone
 from utils import handle_errors, require_columns
 import logging
 

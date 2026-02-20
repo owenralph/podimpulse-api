@@ -87,8 +87,6 @@ def predict(req: func.HttpRequest) -> func.HttpResponse:
                     df[col] = 0
             predicted_rows = []
             history = df.copy()
-            # Track which dates are set as release dates
-            used_release_dates = set(release_dates_set)
             # For optimization, store candidate dates and their predicted downloads
             candidate_dates = []
             def _run_forecast(

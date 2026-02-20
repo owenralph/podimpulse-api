@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 import logging
-from typing import Any
 from utils import handle_errors, require_columns
 
 @handle_errors

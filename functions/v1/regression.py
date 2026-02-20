@@ -7,7 +7,7 @@ from typing import Optional
 from utils.azure_blob import load_from_blob_storage, save_to_blob_storage
 from utils.retry import retry_with_backoff
 from sklearn.linear_model import Ridge
-from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.model_selection import train_test_split
 from sklearn.feature_selection import RFECV
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import RidgeCV

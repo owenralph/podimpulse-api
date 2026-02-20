@@ -14,7 +14,6 @@ import json
 import requests
 import io
 import pandas as pd
-import numpy as np
 from typing import Optional
 
 def ingest(req: func.HttpRequest) -> func.HttpResponse:
@@ -225,7 +224,7 @@ def ingest(req: func.HttpRequest) -> func.HttpResponse:
 
     # Mark potential missing episodes
     try:
-        downloads_df, missing_episodes = mark_potential_missing_episodes(downloads_df, episode_data["Date"], return_missing=True)
+        downloads_df, _missing_episodes = mark_potential_missing_episodes(downloads_df, episode_data["Date"], return_missing=True)
     except Exception as e:
         logging.error(f"Failed to mark potential missing episodes: {e}", exc_info=True)
         return func.HttpResponse(json.dumps({

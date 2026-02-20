@@ -1,4 +1,3 @@
-from typing import List, Dict
 import logging
 import pandas as pd
 import feedparser
