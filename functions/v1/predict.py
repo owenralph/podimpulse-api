@@ -4,7 +4,7 @@ import json
 import pandas as pd
 import numpy as np
 from typing import Optional
-from utils.azure_blob import load_from_blob_storage
+from utils.azure_blob import load_from_blob_storage, save_to_blob_storage
 from utils.retry import retry_with_backoff
 from utils import validate_http_method, json_response, handle_blob_operation, error_response
 import io
@@ -36,7 +36,10 @@ def predict(req: func.HttpRequest) -> func.HttpResponse:
                 return error_response("Invalid JSON body", 400)
             episodes = request_data.get('episodes')
             release_dates = request_data.get('release_dates', [])
-            release_dates_set = set(pd.to_datetime(release_dates).strftime('%Y-%m-%d'))
+            try:
+                release_dates_set = set(pd.to_datetime(release_dates).strftime('%Y-%m-%d'))
+            except Exception:
+                return error_response("Invalid release_dates format. Use YYYY-MM-DD date strings.", 400)
             if not podcast_id:
                 return error_response("Missing podcast_id.", 400)
             if episodes is None and not release_dates:
@@ -266,10 +269,40 @@ def predict(req: func.HttpRequest) -> func.HttpResponse:
             }
             if episodes is not None and episodes > len(release_dates_set):
                 response["optimized_release_dates"] = sorted(list(optimized_release_dates))
+
+            # Persist latest prediction result for GET /predict
+            prediction_result_blob = f"{podcast_id}_prediction_result"
+            _, save_err = handle_blob_operation(
+                retry_with_backoff(
+                    lambda: save_to_blob_storage(json.dumps(response), prediction_result_blob),
+                    exceptions=(RuntimeError,),
+                    max_attempts=3,
+                    initial_delay=1.0,
+                    backoff_factor=2.0
+                )
+            )
+            if save_err:
+                logging.error(f"Failed to save latest prediction result: {save_err}")
             return json_response(response, 200)
         elif req.method == "GET":
-            # Retrieve most recent prediction results (implement as needed)
-            return error_response("GET /predict not implemented yet.", 501)
+            prediction_result_blob = f"{podcast_id}_prediction_result"
+            blob_data, err = handle_blob_operation(
+                retry_with_backoff(
+                    lambda: load_from_blob_storage(prediction_result_blob),
+                    exceptions=(RuntimeError,),
+                    max_attempts=3,
+                    initial_delay=1.0,
+                    backoff_factor=2.0
+                )
+            )
+            if err or not blob_data:
+                return error_response("No prediction results found for this podcast. Run POST first.", 404)
+            try:
+                result = json.loads(blob_data)
+            except Exception as e:
+                logging.error(f"Failed to parse prediction result blob: {e}", exc_info=True)
+                return error_response("Failed to parse prediction result.", 500)
+            return json_response(result, 200)
         else:
             return error_response("Method Not Allowed", 405)
     except Exception as e:

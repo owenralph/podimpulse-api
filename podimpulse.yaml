@@ -619,117 +619,6 @@ paths:
                     type: string
                   result:
                     type: object
-    put:
-      summary: Replace missing episode status for a podcast.
-      description: >
-        Replaces the missing episode status for the given podcast with the provided updates.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                updates:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      date:
-                        type: string
-                        format: date
-                      accepted:
-                        type: boolean
-                  description: List of updates, or the string "ALL" to accept all missing episodes.
-      responses:
-        '200':
-          description: Missing episode status replaced successfully.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: Missing episode status replaced successfully.
-                  result:
-                    type: object
-                    properties:
-                      podcast_id:
-                        type: string
-                      data:
-                        type: array
-                        items:
-                          type: object
-                          description: Updated podcast data row.
-                      potential_missing_episodes:
-                        type: array
-                        items:
-                          type: string
-                          format: date-time
-        '400':
-          description: Invalid input or update format.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                  result:
-                    type: object
-        '404':
-          description: Podcast not found.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                  result:
-                    type: object
-        '500':
-          description: Internal server error.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                  result:
-                    type: object
-    delete:
-      summary: Delete all missing episode status for a podcast.
-      description: >
-        Deletes all missing episode status records for the given podcast.
-      responses:
-        '204':
-          description: All missing episode status deleted successfully.
-        '404':
-          description: Podcast not found.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                  result:
-                    type: object
-        '500':
-          description: Internal server error.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                  result:
-                    type: object
-
   /v1/podcasts/{podcast_id}/predict:
     parameters:
       - in: path
@@ -1026,12 +915,6 @@ paths:
         Returns a rolling average and line of best fit for podcast downloads over time.
       parameters:
         - in: query
-          name: token
-          schema:
-            type: string
-          required: true
-          description: The instance token for the podcast data.
-        - in: query
           name: days
           schema:
             type: integer
@@ -1103,23 +986,21 @@ paths:
                     type: string
                   result:
                     type: object
-    put:
-      summary: Replace trend calculation parameters for a podcast.
-      description: >
-        Replaces the trend calculation parameters for the given podcast.
-      requestBody:
+  /v1/podcasts/{podcast_id}/impact:
+    parameters:
+      - in: path
+        name: podcast_id
+        schema:
+          type: string
         required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                days:
-                  type: integer
-                  description: The window size (in days) for the rolling average.
+        description: The podcast ID.
+    get:
+      summary: Analyze episode release impact on downloads.
+      description: >
+        Runs impact analysis over recent data and returns estimated day-by-day impact.
       responses:
         '200':
-          description: Trend calculation parameters replaced successfully.
+          description: Impact analysis completed successfully.
           content:
             application/json:
               schema:
@@ -1127,31 +1008,24 @@ paths:
                 properties:
                   message:
                     type: string
-                    example: Trend calculation parameters replaced successfully.
                   result:
                     type: object
                     properties:
-                      trend_data:
+                      days_of_impact:
+                        type: integer
+                      average_impact:
+                        type: number
+                      impact_per_day:
                         type: array
                         items:
                           type: object
                           properties:
-                            date:
-                              type: string
-                              format: date-time
-                            rolling_average:
+                            day_offset:
+                              type: integer
+                            impact:
                               type: number
-                            line_of_best_fit:
-                              type: number
-                      trend_line:
-                        type: object
-                        properties:
-                          slope:
-                            type: number
-                          intercept:
-                            type: number
         '400':
-          description: Missing or invalid input.
+          description: Invalid input or insufficient data.
           content:
             application/json:
               schema:
@@ -1162,36 +1036,7 @@ paths:
                   result:
                     type: object
         '404':
-          description: Podcast not found.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                  result:
-                    type: object
-        '500':
-          description: Internal server error.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                  result:
-                    type: object
-    delete:
-      summary: Delete trend calculation data for a podcast.
-      description: >
-        Deletes the trend calculation data for the given podcast.
-      responses:
-        '204':
-          description: Trend calculation data deleted successfully.
-        '404':
-          description: Podcast not found.
+          description: Podcast data not found.
           content:
             application/json:
               schema:

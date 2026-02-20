@@ -90,7 +90,7 @@ def podcast_ingest(req: func.HttpRequest) -> func.HttpResponse:
     return ingest_handler(req)
 
 # Missing episodes endpoints
-@app.route(route="v1/podcasts/{podcast_id}/missing", methods=["GET", "POST", "PUT", "DELETE"])
+@app.route(route="v1/podcasts/{podcast_id}/missing", methods=["GET", "POST"])
 def podcast_missing(req: func.HttpRequest) -> func.HttpResponse:
     return missing_handler(req)
 
@@ -105,7 +105,7 @@ def podcast_regression(req: func.HttpRequest) -> func.HttpResponse:
     return analyze_regression_handler(req)
 
 # Trend endpoints
-@app.route(route="v1/podcasts/{podcast_id}/trend", methods=["GET", "PUT", "DELETE"])
+@app.route(route="v1/podcasts/{podcast_id}/trend", methods=["GET"])
 def podcast_trend(req: func.HttpRequest) -> func.HttpResponse:
     return trend_handler(req)
 
