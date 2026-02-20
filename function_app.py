@@ -10,10 +10,18 @@ from functions.v1.facebook.pages import get_user_pages as get_user_pages_handler
 from functions.v1.facebook.analytics import query_reels_analytics as query_page_analytics_handler
 from functions.v1.regression import regression as analyze_regression_handler
 from functions.v1.predict import predict as predict_handler
+from utils import error_response
 
 # Initialize the Function App
 # I hope this works
 app = func.FunctionApp()
+
+
+def _legacy_route_gone(replacement: str) -> func.HttpResponse:
+    return error_response(
+        f"This endpoint is deprecated. Use {replacement} instead.",
+        410
+    )
 
 """""""""
 Preparation
@@ -28,27 +36,27 @@ def rss(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="v1/ingest")
 def ingest(req: func.HttpRequest) -> func.HttpResponse:
-    return ingest_handler(req)
+    return _legacy_route_gone("/v1/podcasts/{podcast_id}/ingest")
 
 @app.route(route="v1/missing")
 def missing(req: func.HttpRequest) -> func.HttpResponse:
-    return missing_handler(req)
+    return _legacy_route_gone("/v1/podcasts/{podcast_id}/missing")
 
 @app.route(route="v1/trend")
 def trend(req: func.HttpRequest) -> func.HttpResponse:
-    return trend_handler(req)
+    return _legacy_route_gone("/v1/podcasts/{podcast_id}/trend")
 
 @app.route(route="v1/impact")
 def impact(req: func.HttpRequest) -> func.HttpResponse:
-    return impact_handler(req)
+    return _legacy_route_gone("/v1/podcasts/{podcast_id}/impact")
 
 @app.route(route="v1/analyze_regression")
 def analyze_regression(req: func.HttpRequest) -> func.HttpResponse:
-    return analyze_regression_handler(req)
+    return _legacy_route_gone("/v1/podcasts/{podcast_id}/regression")
 
 @app.route(route="v1/predict")
 def predict_endpoint(req: func.HttpRequest) -> func.HttpResponse:
-    return predict_handler(req)
+    return _legacy_route_gone("/v1/podcasts/{podcast_id}/predict")
 
 """""""""
 Facebook connection
