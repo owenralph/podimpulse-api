@@ -9,17 +9,52 @@ from utils.azure_blob import save_to_blob_storage, load_from_blob_storage
 
 def initialize(req: func.HttpRequest) -> func.HttpResponse:
     """
-    Azure Function endpoint to create a new podcast resource (POST /v1/podcasts).
-    Accepts 'title' and 'rss_url' in the request body, stores them in a new blob, and returns podcast_id, title, and rss_url.
-    Ensures idempotency and checks for duplicates, similar to the old /rss logic.
+    Azure Function endpoint to create or list podcast resources:
+    - POST /v1/podcasts: create a new podcast
+    - GET /v1/podcasts: list all podcasts
     """
     logging.debug("[initialize] Received request to create a new podcast.")
     start_time = time.time()
 
     # Validate HTTP method
-    method_error = validate_http_method(req, ["POST"])
+    method_error = validate_http_method(req, ["POST", "GET"])
     if method_error:
         return method_error
+
+    if req.method == "GET":
+        try:
+            from utils.azure_blob import list_all_blob_ids
+            existing_ids = list_all_blob_ids()
+            podcasts = []
+            for pid in existing_ids:
+                blob_data, err = handle_blob_operation(
+                    retry_with_backoff(
+                        lambda: load_from_blob_storage(pid),
+                        exceptions=(RuntimeError,),
+                        max_attempts=2,
+                        initial_delay=0.5,
+                        backoff_factor=2.0
+                    )
+                )
+                if err:
+                    continue
+                try:
+                    pdata = json.loads(blob_data)
+                except Exception:
+                    continue
+                if pdata.get("title") and pdata.get("rss_url"):
+                    podcasts.append({
+                        "podcast_id": pid,
+                        "title": pdata["title"],
+                        "rss_url": pdata["rss_url"]
+                    })
+            return json_response({
+                "message": "Podcasts retrieved successfully.",
+                "result": podcasts
+            }, 200)
+        except Exception as e:
+            logging.error(f"Failed to list podcasts: {e}", exc_info=True)
+            return error_response("Failed to list podcasts.", 500)
 
     # Parse and validate request body
     try:

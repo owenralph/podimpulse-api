@@ -1,11 +1,8 @@
 import logging
 import azure.functions as func
-from utils.azure_blob import blob_container_client
-from utils.retry import retry_with_backoff
 from utils.regression import load_json_from_blob, add_lagged_episode_release_columns, summarize_impact_results
 import pandas as pd
 import numpy as np
-import statsmodels.api as sm
 import json
 from typing import Optional
 from sklearn.linear_model import RidgeCV
@@ -47,9 +44,13 @@ def impact(req: func.HttpRequest) -> func.HttpResponse:
 
         # Parse JSON into DataFrame
         try:
-            df = pd.read_json(json_data, orient="records")
-            df['Date'] = pd.to_datetime(df['Date'])
-            df.sort_values('Date', inplace=True)
+            payload = json.loads(json_data)
+            data = payload.get("data", [])
+            if not data:
+                return func.HttpResponse("No data found for impact analysis.", status_code=404)
+            df = pd.DataFrame(data)
+            df["Date"] = pd.to_datetime(df["Date"])
+            df.sort_values("Date", inplace=True)
         except Exception as e:
             error_message = f"Error parsing dataset: {e}"
             logging.error(error_message, exc_info=True)
@@ -68,6 +69,8 @@ def impact(req: func.HttpRequest) -> func.HttpResponse:
             predictors = [f"Episodes released today-{i}" for i in range(max_days + 1)]
             # Remove predictors with zero variance
             predictors = [col for col in predictors if df[col].nunique() > 1]
+            if not predictors:
+                return func.HttpResponse("Not enough variation in features for impact analysis.", status_code=400)
             df = df.dropna(subset=predictors + ['Downloads'])
             X = df[predictors]
             y = df['Downloads']
@@ -75,13 +78,16 @@ def impact(req: func.HttpRequest) -> func.HttpResponse:
             logging.error(f"Error preparing predictors/response: {e}", exc_info=True)
             return func.HttpResponse("Error preparing regression data.", status_code=500)
 
+        if len(X) < 3:
+            return func.HttpResponse("Not enough data points for impact analysis.", status_code=400)
+
         # Feature scaling
         scaler = StandardScaler()
         X_scaled = scaler.fit_transform(X)
 
         # Hyperparameter tuning for Ridge (RidgeCV)
         alphas = np.logspace(-3, 3, 20)
-        ridge_cv = RidgeCV(alphas=alphas, cv=5, scoring='r2')
+        ridge_cv = RidgeCV(alphas=alphas, cv=min(5, len(X)), scoring='r2')
         ridge_cv.fit(X_scaled, y)
         best_alpha = ridge_cv.alpha_
 
@@ -102,6 +108,8 @@ def impact(req: func.HttpRequest) -> func.HttpResponse:
         X_test = X_scaled[split_idx:]
         y_train = y.iloc[:split_idx]
         y_test = y.iloc[split_idx:]
+        if len(X_train) == 0 or len(X_test) == 0:
+            return func.HttpResponse("Not enough data to create train/test split.", status_code=400)
 
         # Fit final Ridge model with best alpha
         model = RidgeCV(alphas=[best_alpha], cv=None)

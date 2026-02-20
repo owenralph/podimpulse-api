@@ -22,13 +22,18 @@ def determine_optimal_clusters(features: np.ndarray, max_clusters: int = 10) -> 
         int: Optimal number of clusters based on the elbow method.
     """
     logging.debug(f"Determining optimal clusters up to {max_clusters}.")
+    n_samples = len(features)
+    if n_samples <= 1:
+        return 1
+
+    max_k = min(max_clusters, n_samples)
     ssd = []  # Sum of squared distances for each k
-    for k in range(1, max_clusters + 1):
+    for k in range(1, max_k + 1):
         kmeans = KMeans(n_clusters=k, random_state=42)
         kmeans.fit(features)
         ssd.append(kmeans.inertia_)  # Inertia is the sum of squared distances
-    knee = KneeLocator(range(1, max_clusters + 1), ssd, curve="convex", direction="decreasing")
-    optimal_clusters = knee.knee or 2  # Default to 2 clusters if no knee is found
+    knee = KneeLocator(range(1, max_k + 1), ssd, curve="convex", direction="decreasing")
+    optimal_clusters = knee.knee or min(2, max_k)
     return optimal_clusters
 
 

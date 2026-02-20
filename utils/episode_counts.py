@@ -56,6 +56,16 @@ def add_episode_counts_and_titles(
 
     # Flatten titles for clustering
     flattened_titles = episode_data["Title"].dropna().unique()
+    if len(flattened_titles) == 0:
+        downloads_df["Clustered_Episode_Titles"] = downloads_df["Episode_Titles"].apply(
+            lambda titles: [{"title": title, "cluster": -1} for title in titles]
+        )
+        downloads_df = downloads_df.drop(columns=["Local_Date"])
+        return downloads_df
+
+    max_k = min(max_clusters, len(flattened_titles))
+    if max_k < 1:
+        max_k = 1
 
     # Vectorize episode titles using TF-IDF
     vectorizer = TfidfVectorizer(stop_words="english")
@@ -63,13 +73,13 @@ def add_episode_counts_and_titles(
 
     # Determine optimal number of clusters using the elbow method
     ssd = []  # Sum of squared distances
-    for k in range(1, max_clusters + 1):
+    for k in range(1, max_k + 1):
         kmeans = KMeans(n_clusters=k, random_state=42)
         kmeans.fit(tfidf_matrix)
         ssd.append(kmeans.inertia_)
 
-    knee = KneeLocator(range(1, max_clusters + 1), ssd, curve="convex", direction="decreasing")
-    optimal_clusters = knee.knee or 2  # Default to 2 clusters if no elbow is found
+    knee = KneeLocator(range(1, max_k + 1), ssd, curve="convex", direction="decreasing")
+    optimal_clusters = knee.knee or min(2, max_k)
 
     # Apply KMeans clustering
     kmeans = KMeans(n_clusters=optimal_clusters, random_state=42)

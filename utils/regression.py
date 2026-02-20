@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from utils.retry import retry_with_backoff
-from utils.azure_blob import blob_container_client
+from utils.azure_blob import load_from_blob_storage
 from utils import handle_errors, require_columns
 import logging
 from typing import List, Tuple
@@ -12,16 +12,14 @@ def load_json_from_blob(token: str) -> str:
     Retries on failure.
     """
     def load_blob():
-        blob_name = f"{token}.json"
-        blob_client = blob_container_client.get_blob_client(blob_name)
-        return blob_client.download_blob().readall().decode('utf-8')
+        return load_from_blob_storage(token)
     return retry_with_backoff(
         load_blob,
-        exceptions=(Exception,),
+        exceptions=(RuntimeError,),
         max_attempts=3,
         initial_delay=1.0,
         backoff_factor=2.0
-    )
+    )()
 
 @handle_errors
 def add_lagged_episode_release_columns(df: pd.DataFrame, max_days: int = 7) -> pd.DataFrame:
