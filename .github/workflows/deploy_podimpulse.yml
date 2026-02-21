@@ -139,9 +139,10 @@ jobs:
             return resp
 
           try:
+            smoke_token = uuid.uuid4().hex[:8]
             create = call("podcasts.post", "POST", "/v1/podcasts", json_body={
-              "title": f"CD Smoke {uuid.uuid4().hex[:8]}",
-              "rss_url": "https://feeds.simplecast.com/54nAGcIl"
+              "title": f"CD Smoke {smoke_token}",
+              "rss_url": f"https://feeds.simplecast.com/54nAGcIl?smoke={smoke_token}"
             })
             create.raise_for_status()
             podcast_id = create.json()["result"]["podcast_id"]
