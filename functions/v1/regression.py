@@ -15,6 +15,17 @@ import joblib
 import io
 from utils import validate_http_method, json_response, handle_blob_operation, error_response
 
+
+def _dedupe_preserve_order(items):
+    seen = set()
+    deduped = []
+    for item in items:
+        if item not in seen:
+            seen.add(item)
+            deduped.append(item)
+    return deduped
+
+
 def regression(req: func.HttpRequest) -> func.HttpResponse:
     """
     Azure Function endpoint to perform ridge regression on ingested podcast data.
@@ -168,6 +179,7 @@ def regression(req: func.HttpRequest) -> func.HttpResponse:
             ]
             # Also remove deduced_episodes_released if present
             predictors = [col for col in predictors if col != 'deduced_episodes_released']
+            predictors = _dedupe_preserve_order(predictors)
 
             # Shift rolling predictors to prevent data leakage (use only past data)
             for col in predictors:
@@ -221,13 +233,15 @@ def regression(req: func.HttpRequest) -> func.HttpResponse:
                 if col not in predictors:
                     predictors.append(col)
 
+            predictors = _dedupe_preserve_order(predictors)
             X = df[predictors]
             y = df[target_col]
 
-            # Convert boolean columns to int using .loc to avoid SettingWithCopyWarning
-            for col in X.columns:
-                if pd.api.types.is_bool_dtype(X[col]):
-                    X.loc[:, col] = X[col].astype(int)
+            # Convert boolean columns to int in one shot to avoid dtype assignment warnings
+            X = X.copy()
+            bool_cols = X.select_dtypes(include=["bool"]).columns
+            if len(bool_cols) > 0:
+                X[bool_cols] = X[bool_cols].astype(int)
             # One-hot encode categorical predictors if present
             for col in X.columns:
                 if pd.api.types.is_object_dtype(X[col]) and not pd.api.types.is_bool_dtype(X[col]):

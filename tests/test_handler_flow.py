@@ -3,6 +3,7 @@ import os
 import unittest
 import uuid
 import importlib
+import warnings
 from unittest.mock import patch
 
 import pandas as pd
@@ -214,6 +215,29 @@ class HandlerFlowTests(unittest.TestCase):
         req = FakeRequest(method="GET", route_params={"podcast_id": "does-not-exist"})
         resp = impact_module.impact(req)
         self.assertEqual(resp.status_code, 404)
+
+    def test_regression_post_avoids_duplicate_and_dtype_warnings(self):
+        ingest_req = FakeRequest(
+            method="POST",
+            route_params={"podcast_id": self.podcast_id},
+            json_body={"csv_url": "https://example.com/downloads.csv"},
+        )
+        ingest_resp = ingest_module.ingest(ingest_req)
+        self.assertEqual(ingest_resp.status_code, 200)
+
+        regression_req = FakeRequest(
+            method="POST",
+            route_params={"podcast_id": self.podcast_id},
+            json_body={"target_col": "Downloads"},
+        )
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            regression_resp = regression_module.regression(regression_req)
+
+        self.assertEqual(regression_resp.status_code, 200)
+        warning_text = "\n".join(str(w.message) for w in caught)
+        self.assertNotIn("DataFrame columns are not unique", warning_text)
+        self.assertNotIn("incompatible dtype", warning_text)
 
 
 if __name__ == "__main__":
