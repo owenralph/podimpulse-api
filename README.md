@@ -20,6 +20,13 @@ Configure environment (for local execution):
 - `BLOB_CONNECTION_STRING` (required)
 - `FACEBOOK_APP_ID` and `FACEBOOK_APP_SECRET` (required for Facebook endpoints)
 
+## Authentication Policy
+
+All HTTP endpoints require an Azure Functions key (`AuthLevel.FUNCTION`).
+
+- Query string: `?code=<function-key>`
+- Header: `x-functions-key: <function-key>`
+
 ## API Paths (Current)
 
 - `POST/GET /v1/podcasts`

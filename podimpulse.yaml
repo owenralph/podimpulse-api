@@ -3,6 +3,9 @@ info:
   title: PodImpulse API
   version: 1.0.0
   description: Podcast analytics API
+security:
+  - functionKeyQuery: []
+  - functionKeyHeader: []
 paths:
   /v1/podcasts:
     post:
@@ -56,6 +59,19 @@ paths:
                     type: string
                   result:
                     type: object
+
+components:
+  securitySchemes:
+    functionKeyQuery:
+      type: apiKey
+      in: query
+      name: code
+      description: Azure Functions host/function key passed as `code`.
+    functionKeyHeader:
+      type: apiKey
+      in: header
+      name: x-functions-key
+      description: Azure Functions host/function key passed in header.
         '500':
           description: Internal server error.
           content:

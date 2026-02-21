@@ -13,8 +13,7 @@ from functions.v1.predict import predict as predict_handler
 from utils import error_response
 
 # Initialize the Function App
-# I hope this works
-app = func.FunctionApp()
+app = func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)
 
 
 def _legacy_route_gone(replacement: str) -> func.HttpResponse:

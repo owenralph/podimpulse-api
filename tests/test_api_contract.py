@@ -70,6 +70,18 @@ class ApiContractTests(unittest.TestCase):
         spec_routes = self._parse_routes_from_openapi()
         self.assertEqual(app_routes, spec_routes)
 
+    def test_function_app_uses_function_auth_level(self):
+        app_source = Path("function_app.py").read_text(encoding="utf-8")
+        self.assertIn("func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)", app_source)
+
+    def test_openapi_declares_function_key_security(self):
+        spec_text = Path("podimpulse.yaml").read_text(encoding="utf-8")
+        self.assertIn("securitySchemes:", spec_text)
+        self.assertIn("functionKeyQuery:", spec_text)
+        self.assertIn("functionKeyHeader:", spec_text)
+        self.assertIn("name: code", spec_text)
+        self.assertIn("name: x-functions-key", spec_text)
+
     def test_legacy_compute_routes_return_410(self):
         legacy_targets = [
             ("/v1/ingest", "/v1/podcasts/{podcast_id}/ingest"),
