@@ -7,7 +7,6 @@ from typing import Optional
 from utils.azure_blob import load_from_blob_storage, save_to_blob_storage
 from utils.retry import retry_with_backoff
 from sklearn.linear_model import Ridge
-from sklearn.model_selection import train_test_split
 from sklearn.feature_selection import RFECV
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import RidgeCV
@@ -24,6 +23,17 @@ def _dedupe_preserve_order(items):
             seen.add(item)
             deduped.append(item)
     return deduped
+
+
+def _select_cv_strategy(n_samples: int) -> tuple[int, str]:
+    """
+    Choose a safe CV fold count and scorer for small datasets.
+    R2 requires at least 2 test samples per fold, so switch to MAE when not possible.
+    """
+    if n_samples < 4:
+        return 2, "neg_mean_absolute_error"
+    max_r2_folds = n_samples // 2
+    return min(5, max_r2_folds), "r2"
 
 
 def regression(req: func.HttpRequest) -> func.HttpResponse:
@@ -87,7 +97,8 @@ def regression(req: func.HttpRequest) -> func.HttpResponse:
             logging.info(f"DataFrame shape before dropna: {df.shape}")
             # --- Feature Engineering Enhancements ---
             # Add lagged values of the target variable (e.g., previous 1, 7, 14 days)
-            for lag in [1, 7, 14]:
+            max_lag = max(1, len(df) - 2)
+            for lag in [lag for lag in [1, 7, 14] if lag <= max_lag]:
                 lag_col = f'{target_col}_lag_{lag}'
                 df[lag_col] = df[target_col].shift(lag)
                 if lag_col not in predictors:
@@ -118,7 +129,7 @@ def regression(req: func.HttpRequest) -> func.HttpResponse:
                     predictors += [f'fourier_sin_{k}', f'fourier_cos_{k}']
             # Add tail predictors for episodes released (lags and rolling sum)
             if 'Episodes Released' in df.columns:
-                for lag in [1, 2, 3, 7]:
+                for lag in [lag for lag in [1, 2, 3, 7] if lag <= max_lag]:
                     df[f'Episodes_Released_lag_{lag}'] = df['Episodes Released'].shift(lag).fillna(0).astype(int)
                     if f'Episodes_Released_lag_{lag}' not in predictors:
                         predictors.append(f'Episodes_Released_lag_{lag}')
@@ -127,7 +138,7 @@ def regression(req: func.HttpRequest) -> func.HttpResponse:
                     predictors.append('Episodes_Released_rolling_7')
             # Add interaction features between Episodes Released and its lags/rolling
             if 'Episodes Released' in df.columns:
-                for lag in [1, 2, 3, 7]:
+                for lag in [lag for lag in [1, 2, 3, 7] if lag <= max_lag]:
                     lag_col = f'Episodes_Released_lag_{lag}'
                     if lag_col in df.columns:
                         inter_col = f'Episodes_Released_x_lag_{lag}'
@@ -188,6 +199,8 @@ def regression(req: func.HttpRequest) -> func.HttpResponse:
 
             # Remove predictors with zero variance (constant columns)
             predictors = [col for col in predictors if df[col].nunique() > 1]
+            if not predictors:
+                return error_response("Not enough variation in predictors for regression.", 400)
 
             # --- Logging for dropped features and dropped rows ---
             # Before dropna, log which predictors have missing values and how many
@@ -203,6 +216,8 @@ def regression(req: func.HttpRequest) -> func.HttpResponse:
 
             # Drop rows with missing values in predictors or target
             df = df.dropna(subset=predictors + [target_col])
+            if len(df) < 3:
+                return error_response("Not enough data points for regression after preprocessing (minimum 3 rows).", 400)
 
             # --- Logging for Debugging ---
             logging.info(f"Predictors after dropna: {predictors}")
@@ -246,6 +261,8 @@ def regression(req: func.HttpRequest) -> func.HttpResponse:
             for col in X.columns:
                 if pd.api.types.is_object_dtype(X[col]) and not pd.api.types.is_bool_dtype(X[col]):
                     X = pd.get_dummies(X, columns=[col], drop_first=True)
+            if X.empty:
+                return error_response("No usable predictors available after preprocessing.", 400)
 
             # Remove highly collinear predictors (correlation > 0.95)
             corr_matrix = X.corr().abs()
@@ -260,17 +277,25 @@ def regression(req: func.HttpRequest) -> func.HttpResponse:
 
             # Iterative feature selection using RFECV (recursive feature elimination with cross-validation)
             model = Ridge(alpha=1.0)
-            rfecv = RFECV(estimator=model, step=1, cv=5, scoring='r2', min_features_to_select=1)
+            cv_folds, cv_scoring = _select_cv_strategy(len(X))
+            original_features = list(X.columns)
+            rfecv = RFECV(
+                estimator=model,
+                step=1,
+                cv=cv_folds,
+                scoring=cv_scoring,
+                min_features_to_select=1
+            )
             rfecv.fit(X, y)
             selected_features = list(X.columns[rfecv.support_])
             X = X[selected_features]
 
             # Log feature ranking from RFECV for traceability
-            feature_ranking = dict(zip(X.columns, rfecv.ranking_))
+            feature_ranking = dict(zip(original_features, rfecv.ranking_))
             logging.info(f"RFECV feature ranking (1=selected): {feature_ranking}")
 
             # After RFECV, log which features were dropped
-            rfecv_dropped = [col for col in X.columns if col not in selected_features]
+            rfecv_dropped = [col for col in original_features if col not in selected_features]
             if rfecv_dropped:
                 logging.info(f"Dropped features by RFECV: {rfecv_dropped}")
 
@@ -283,7 +308,7 @@ def regression(req: func.HttpRequest) -> func.HttpResponse:
 
             # Hyperparameter tuning for Ridge (RidgeCV)
             alphas = np.logspace(-3, 3, 20)
-            ridge_cv = RidgeCV(alphas=alphas, cv=5, scoring='r2')
+            ridge_cv = RidgeCV(alphas=alphas, cv=cv_folds, scoring=cv_scoring)
             ridge_cv.fit(X_scaled, y)
             best_alpha = ridge_cv.alpha_
 
@@ -293,25 +318,36 @@ def regression(req: func.HttpRequest) -> func.HttpResponse:
             # Outlier detection and removal (remove samples with standardized residuals > 3)
             y_pred_all = ridge_cv.predict(X_scaled)
             residuals = y - y_pred_all
-            std_residuals = (residuals - residuals.mean()) / residuals.std()
-            mask = std_residuals.abs() <= 3
+            residuals_std = residuals.std()
+            if residuals_std == 0 or np.isnan(residuals_std):
+                mask = np.ones(len(residuals), dtype=bool)
+            else:
+                std_residuals = (residuals - residuals.mean()) / residuals_std
+                mask = std_residuals.abs() <= 3
+            if int(mask.sum()) < 3:
+                logging.info("Skipping outlier removal because it would leave fewer than 3 rows.")
+                mask = np.ones(len(residuals), dtype=bool)
             X_scaled = X_scaled[mask]
             y = y[mask]
 
-            # Time-aware train/test split (chronological, not random)
-            if 'Date' in df.columns:
-                df_masked = df[mask].copy()
+            # Time-aware train/test split (chronological, not random) with safe minimum test size.
+            df_masked = df[mask].copy()
+            if 'Date' in df_masked.columns:
                 df_masked['Date'] = pd.to_datetime(df_masked['Date'])
                 df_masked = df_masked.sort_values('Date')
-                n_train = int(len(df_masked) * 0.8)
-                X_train = X_scaled[:n_train]
-                X_test = X_scaled[n_train:]
-                y_train = y.iloc[:n_train]
-                y_test = y.iloc[n_train:]
-                logging.info(f"Train set last date: {df_masked['Date'].iloc[n_train-1]}")
+            n_test = max(2, int(round(len(df_masked) * 0.2)))
+            if n_test >= len(df_masked):
+                n_test = len(df_masked) - 1
+            n_train = len(df_masked) - n_test
+            if n_train < 1:
+                return error_response("Not enough rows to split regression train/test sets.", 400)
+            X_train = X_scaled[:n_train]
+            X_test = X_scaled[n_train:]
+            y_train = y.iloc[:n_train]
+            y_test = y.iloc[n_train:]
+            if 'Date' in df_masked.columns and n_test > 0:
+                logging.info(f"Train set last date: {df_masked['Date'].iloc[n_train - 1]}")
                 logging.info(f"Test set first date: {df_masked['Date'].iloc[n_train]}")
-            else:
-                X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42, shuffle=False)
 
             # --- Logging for Debugging ---
             logging.info(f"Train size: {len(X_train)}, Test size: {len(X_test)}")

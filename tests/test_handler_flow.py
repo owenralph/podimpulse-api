@@ -239,6 +239,36 @@ class HandlerFlowTests(unittest.TestCase):
         self.assertNotIn("DataFrame columns are not unique", warning_text)
         self.assertNotIn("incompatible dtype", warning_text)
 
+    def test_regression_post_handles_small_dataset(self):
+        dates = pd.date_range("2026-01-01", periods=8, freq="D")
+        data = []
+        for idx, date_value in enumerate(dates):
+            data.append(
+                {
+                    "Date": date_value.strftime("%Y-%m-%dT00:00:00"),
+                    "timezone": "GMT",
+                    "Downloads": 100 + (idx * 7),
+                    "Episodes Released": 1 if idx % 3 == 0 else 0,
+                    "potential_missing_episode": False,
+                }
+            )
+        self.store[self.podcast_id] = json.dumps(
+            {"title": "Flow Podcast", "rss_url": "https://example.com/feed.xml", "data": data}
+        )
+
+        regression_req = FakeRequest(
+            method="POST",
+            route_params={"podcast_id": self.podcast_id},
+            json_body={"target_col": "Downloads"},
+        )
+        regression_resp = regression_module.regression(regression_req)
+
+        self.assertEqual(regression_resp.status_code, 200)
+        body = json.loads(regression_resp.get_body().decode("utf-8"))
+        self.assertIn("best_alpha", body["result"])
+        self.assertGreaterEqual(body["result"]["n_train"], 1)
+        self.assertGreaterEqual(body["result"]["n_test"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()
