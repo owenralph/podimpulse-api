@@ -43,6 +43,12 @@ Detailed schema is in `podimpulse.yaml`.
 ## Legacy Endpoints
 
 Old top-level compute routes (for example `/v1/ingest`, `/v1/predict`, `/v1/trend`) now return `410 Gone` with the replacement resource path.
+These responses also include a sunset date of `2026-06-30`.
+
+Decommission plan:
+1. Keep returning `410` + replacement path until all consumers migrate.
+2. Validate no consumer traffic to legacy routes in Application Insights for 30 consecutive days.
+3. Remove legacy route declarations from `function_app.py` after migration criteria are met.
 
 ## Tests
 

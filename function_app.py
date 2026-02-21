@@ -1,4 +1,5 @@
 import azure.functions as func
+import json
 from functions.v1.initialize import initialize as initialize_handler
 from functions.v1.rss import rss as rss_handler
 from functions.v1.ingest import ingest as ingest_handler
@@ -10,16 +11,33 @@ from functions.v1.facebook.pages import get_user_pages as get_user_pages_handler
 from functions.v1.facebook.analytics import query_reels_analytics as query_page_analytics_handler
 from functions.v1.regression import regression as analyze_regression_handler
 from functions.v1.predict import predict as predict_handler
-from utils import error_response
 
 # Initialize the Function App
 app = func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)
+LEGACY_ROUTE_REMOVAL_DATE = "2026-06-30"
 
 
 def _legacy_route_gone(replacement: str) -> func.HttpResponse:
-    return error_response(
-        f"This endpoint is deprecated. Use {replacement} instead.",
-        410
+    return func.HttpResponse(
+        json.dumps(
+            {
+                "message": (
+                    f"This endpoint is deprecated and will be removed after {LEGACY_ROUTE_REMOVAL_DATE}. "
+                    f"Use {replacement} instead."
+                ),
+                "result": {
+                    "replacement": replacement,
+                    "sunset_date": LEGACY_ROUTE_REMOVAL_DATE,
+                },
+            }
+        ),
+        status_code=410,
+        mimetype="application/json",
+        headers={
+            "Deprecation": "true",
+            "Sunset": "Tue, 30 Jun 2026 23:59:59 GMT",
+            "Link": f"<{replacement}>; rel=\"alternate\"",
+        },
     )
 
 """""""""

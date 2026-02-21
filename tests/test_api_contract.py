@@ -106,6 +106,9 @@ class ApiContractTests(unittest.TestCase):
                 body = json.loads(resp.get_body().decode("utf-8"))
                 self.assertIn("deprecated", body["message"].lower())
                 self.assertIn(replacement, body["message"])
+                self.assertEqual(body["result"]["replacement"], replacement)
+                self.assertEqual(body["result"]["sunset_date"], function_app.LEGACY_ROUTE_REMOVAL_DATE)
+                self.assertEqual(resp.headers.get("Deprecation"), "true")
 
 
 if __name__ == "__main__":
