@@ -2,6 +2,8 @@ import azure.functions as func
 import requests
 import logging
 from utils import validate_http_method, json_response, error_response
+from utils.retry import retry_with_backoff
+import time
 
 
 def query_reels_analytics(req: func.HttpRequest) -> func.HttpResponse:
@@ -38,8 +40,25 @@ def query_reels_analytics(req: func.HttpRequest) -> func.HttpResponse:
         }
 
         # Fetch Reels data
-        reels_response = requests.get(reels_url, params=reels_params, timeout=10)
-        reels_response.raise_for_status()
+        def fetch_reels_data():
+            call_start = time.perf_counter()
+            response = requests.get(reels_url, params=reels_params, timeout=10)
+            elapsed_ms = (time.perf_counter() - call_start) * 1000
+            logging.info(
+                f"[metric] external_http.call operation=facebook.query_page_analytics "
+                f"status={response.status_code} duration_ms={elapsed_ms:.2f} timeout_s=10"
+            )
+            response.raise_for_status()
+            return response
+
+        reels_response = retry_with_backoff(
+            fetch_reels_data,
+            exceptions=(requests.RequestException,),
+            max_attempts=3,
+            initial_delay=1.0,
+            backoff_factor=2.0,
+            operation_name="facebook.query_page_analytics",
+        )()
 
         # Parse Reels data
         reels_data = reels_response.json().get("data", [])

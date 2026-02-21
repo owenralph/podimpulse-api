@@ -72,3 +72,7 @@ GitHub Actions workflow: `.github/workflows/main_podimpulse.yml`
 
 - `unit-tests` runs pure unit tests.
 - `integration-azurite` runs blob integration tests against Azurite service container.
+
+## Observability
+
+Operational metrics and alert queries are documented in `docs/ops-observability.md`.

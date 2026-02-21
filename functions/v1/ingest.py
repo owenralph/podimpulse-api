@@ -14,6 +14,7 @@ import json
 import requests
 import io
 import pandas as pd
+import time
 from typing import Optional
 
 def ingest(req: func.HttpRequest) -> func.HttpResponse:
@@ -164,7 +165,13 @@ def ingest(req: func.HttpRequest) -> func.HttpResponse:
         # Fetch CSV data from URL with retry
         try:
             def fetch_csv():
+                call_start = time.perf_counter()
                 response = requests.get(csv_url, timeout=10)
+                elapsed_ms = (time.perf_counter() - call_start) * 1000
+                logging.info(
+                    f"[metric] external_http.call operation=ingest.csv_fetch status={response.status_code} "
+                    f"duration_ms={elapsed_ms:.2f} timeout_s=10"
+                )
                 response.raise_for_status()
                 return response.content.decode('utf-8')
             csv_data = retry_with_backoff(
@@ -172,7 +179,8 @@ def ingest(req: func.HttpRequest) -> func.HttpResponse:
                 exceptions=(requests.RequestException,),
                 max_attempts=3,
                 initial_delay=1.0,
-                backoff_factor=2.0
+                backoff_factor=2.0,
+                operation_name="ingest.csv_fetch"
             )()
         except Exception as e:
             logging.error(f"Failed to fetch CSV from URL: {e}", exc_info=True)

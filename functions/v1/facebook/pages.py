@@ -2,6 +2,8 @@ import azure.functions as func
 import requests
 import logging
 from utils import validate_http_method, json_response, error_response
+from utils.retry import retry_with_backoff
+import time
 
 
 def get_user_pages(req: func.HttpRequest) -> func.HttpResponse:
@@ -32,8 +34,25 @@ def get_user_pages(req: func.HttpRequest) -> func.HttpResponse:
         # Fetch user pages
         url = f"https://graph.facebook.com/v17.0/me/accounts"
         params = {"access_token": user_token}
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
+        def fetch_user_pages():
+            call_start = time.perf_counter()
+            response = requests.get(url, params=params, timeout=10)
+            elapsed_ms = (time.perf_counter() - call_start) * 1000
+            logging.info(
+                f"[metric] external_http.call operation=facebook.get_user_pages "
+                f"status={response.status_code} duration_ms={elapsed_ms:.2f} timeout_s=10"
+            )
+            response.raise_for_status()
+            return response
+
+        response = retry_with_backoff(
+            fetch_user_pages,
+            exceptions=(requests.RequestException,),
+            max_attempts=3,
+            initial_delay=1.0,
+            backoff_factor=2.0,
+            operation_name="facebook.get_user_pages",
+        )()
 
         pages = response.json().get("data", [])
         return json_response({"pages": [{"id": page["id"], "name": page["name"]} for page in pages]}, 200)

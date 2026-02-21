@@ -43,6 +43,7 @@ class FakeRequest:
 class _FakeHttpResponse:
     def __init__(self, content=b"Date,Downloads\n2026-01-01,100\n"):
         self.content = content
+        self.status_code = 200
 
     def raise_for_status(self):
         return None

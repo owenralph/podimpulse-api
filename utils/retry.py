@@ -8,7 +8,8 @@ def retry_with_backoff(
     max_attempts: int = 3,
     initial_delay: float = 1.0,
     backoff_factor: float = 2.0,
-    logger: logging.Logger = logging
+    logger: logging.Logger = logging,
+    operation_name: str | None = None
 ) -> Callable:
     """
     Retry a function with exponential backoff on specified exceptions.
@@ -25,15 +26,31 @@ def retry_with_backoff(
         Callable: The wrapped function with retry logic.
     """
     def wrapper(*args, **kwargs) -> Any:
-        logger.debug(f"Starting retry_with_backoff for {func.__name__} with max_attempts={max_attempts}.")
+        op_name = operation_name or getattr(func, "__name__", "unknown")
+        logger.debug(
+            f"Starting retry_with_backoff for {op_name} with max_attempts={max_attempts}."
+        )
+        start = time.perf_counter()
         delay = initial_delay
         for attempt in range(1, max_attempts + 1):
             try:
-                return func(*args, **kwargs)
+                result = func(*args, **kwargs)
+                elapsed_ms = (time.perf_counter() - start) * 1000
+                logger.info(
+                    f"[metric] retry.success operation={op_name} attempts={attempt} elapsed_ms={elapsed_ms:.2f}"
+                )
+                return result
             except exceptions as e:
-                logger.warning(f"Attempt {attempt} failed: {e}")
+                logger.warning(
+                    f"[metric] retry.attempt_failed operation={op_name} attempt={attempt} "
+                    f"max_attempts={max_attempts} error={e}"
+                )
                 if attempt == max_attempts:
-                    logger.error(f"Max retry attempts reached. Last error: {e}")
+                    elapsed_ms = (time.perf_counter() - start) * 1000
+                    logger.error(
+                        f"[metric] retry.exhausted operation={op_name} attempts={attempt} "
+                        f"elapsed_ms={elapsed_ms:.2f} error={e}"
+                    )
                     raise
                 time.sleep(delay)
                 delay *= backoff_factor

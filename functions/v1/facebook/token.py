@@ -3,6 +3,8 @@ from utils.constants import APP_ID, APP_SECRET
 import requests
 import logging
 from utils import validate_http_method, json_response, error_response
+from utils.retry import retry_with_backoff
+import time
 
 
 def exchange_user_token(req: func.HttpRequest) -> func.HttpResponse:
@@ -41,8 +43,25 @@ def exchange_user_token(req: func.HttpRequest) -> func.HttpResponse:
             "client_secret": APP_SECRET,
             "fb_exchange_token": user_token,
         }
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
+        def fetch_exchange():
+            call_start = time.perf_counter()
+            response = requests.get(url, params=params, timeout=10)
+            elapsed_ms = (time.perf_counter() - call_start) * 1000
+            logging.info(
+                f"[metric] external_http.call operation=facebook.exchange_user_token "
+                f"status={response.status_code} duration_ms={elapsed_ms:.2f} timeout_s=10"
+            )
+            response.raise_for_status()
+            return response
+
+        response = retry_with_backoff(
+            fetch_exchange,
+            exceptions=(requests.RequestException,),
+            max_attempts=3,
+            initial_delay=1.0,
+            backoff_factor=2.0,
+            operation_name="facebook.exchange_user_token",
+        )()
 
         long_lived_token = response.json().get("access_token")
         if not long_lived_token:
@@ -86,8 +105,25 @@ def get_page_token(req: func.HttpRequest) -> func.HttpResponse:
         # Fetch the page token
         url = f"https://graph.facebook.com/v17.0/{page_id}"
         params = {"access_token": user_token, "fields": "access_token"}
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
+        def fetch_page_token():
+            call_start = time.perf_counter()
+            response = requests.get(url, params=params, timeout=10)
+            elapsed_ms = (time.perf_counter() - call_start) * 1000
+            logging.info(
+                f"[metric] external_http.call operation=facebook.get_page_token "
+                f"status={response.status_code} duration_ms={elapsed_ms:.2f} timeout_s=10"
+            )
+            response.raise_for_status()
+            return response
+
+        response = retry_with_backoff(
+            fetch_page_token,
+            exceptions=(requests.RequestException,),
+            max_attempts=3,
+            initial_delay=1.0,
+            backoff_factor=2.0,
+            operation_name="facebook.get_page_token",
+        )()
 
         page_token = response.json().get("access_token")
         if not page_token:
