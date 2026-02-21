@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from utils.retry import retry_with_backoff
-from utils.azure_blob import load_from_blob_storage
+from utils.azure_blob import load_podcast_blob
 from utils import handle_errors, require_columns
 import logging
 from typing import List, Tuple
@@ -12,7 +12,7 @@ def load_json_from_blob(token: str) -> str:
     Retries on failure.
     """
     def load_blob():
-        return load_from_blob_storage(token)
+        return load_podcast_blob(token)
     return retry_with_backoff(
         load_blob,
         exceptions=(RuntimeError,),

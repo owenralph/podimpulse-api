@@ -1,11 +1,40 @@
 import uuid
 from azure.storage.blob import BlobServiceClient
+from azure.core.exceptions import ResourceNotFoundError
 import logging
 from utils.constants import BLOB_CONNECTION_STRING, BLOB_CONTAINER_NAME
 from typing import Optional, Union, List
+import re
 
 blob_service_client = BlobServiceClient.from_connection_string(BLOB_CONNECTION_STRING)
 blob_container_client = blob_service_client.get_container_client(BLOB_CONTAINER_NAME)
+PODCAST_METADATA_PREFIX = "podcasts/"
+_UUID_RE = re.compile(
+    r"^[0-9a-fA-F]{8}-"
+    r"[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{12}$"
+)
+
+
+class BlobDecodeError(ValueError):
+    """Raised when blob bytes cannot be decoded as UTF-8."""
+
+
+def _is_uuid_like(value: str) -> bool:
+    return bool(_UUID_RE.match(value or ""))
+
+
+def _download_blob_by_name(blob_name: str, binary: bool = False) -> Union[str, bytes]:
+    blob_client = blob_container_client.get_blob_client(blob_name)
+    blob_data = blob_client.download_blob().readall()
+    if binary:
+        return blob_data
+    try:
+        return blob_data.decode("utf-8")
+    except UnicodeDecodeError as e:
+        raise BlobDecodeError(f"Non-UTF8 blob payload: {e}") from e
 
 def save_to_blob_storage(data: str, instance_id: Optional[str] = None) -> str:
     """
@@ -56,6 +85,121 @@ def list_all_blob_ids() -> List[str]:
         logging.error(f"Error listing blobs from Blob Storage: {e}")
         raise RuntimeError(f"Error listing blobs from Blob Storage: {e}")
 
+
+def list_podcast_ids(include_legacy: bool = True) -> List[str]:
+    """
+    Lists podcast metadata IDs from the dedicated podcasts prefix and optionally
+    legacy root blobs that look like UUID ids.
+    """
+    logging.debug(
+        f"Listing podcast IDs from prefix={PODCAST_METADATA_PREFIX}, include_legacy={include_legacy}"
+    )
+    try:
+        podcast_ids = set()
+
+        for blob in blob_container_client.list_blobs(name_starts_with=PODCAST_METADATA_PREFIX):
+            name = blob.name
+            if not name.endswith(".json"):
+                continue
+            pid = name[len(PODCAST_METADATA_PREFIX):-5]
+            if _is_uuid_like(pid):
+                podcast_ids.add(pid)
+
+        if include_legacy:
+            for blob in blob_container_client.list_blobs():
+                name = blob.name
+                if "/" in name or not name.endswith(".json"):
+                    continue
+                pid = name[:-5]
+                if _is_uuid_like(pid):
+                    podcast_ids.add(pid)
+
+        return sorted(podcast_ids)
+    except Exception as e:
+        logging.error(f"Error listing podcast IDs from Blob Storage: {e}")
+        raise RuntimeError(f"Error listing podcast IDs from Blob Storage: {e}")
+
+
+def save_podcast_blob(data: str, podcast_id: Optional[str] = None) -> str:
+    """
+    Saves podcast metadata/data in a dedicated prefix to isolate it from model artifacts.
+    """
+    logging.debug(f"Saving podcast blob. podcast_id={podcast_id}")
+    try:
+        podcast_id = podcast_id or str(uuid.uuid4())
+        blob_name = f"{PODCAST_METADATA_PREFIX}{podcast_id}.json"
+        blob_client = blob_container_client.get_blob_client(blob_name)
+        blob_client.upload_blob(data, overwrite=True)
+        logging.info(f"Podcast dataset saved to Blob Storage with podcast_id: {podcast_id}")
+        return podcast_id
+    except Exception as e:
+        logging.error(f"Error saving podcast blob to Blob Storage: {e}")
+        raise RuntimeError(f"Error saving podcast blob to Blob Storage: {e}")
+
+
+def load_podcast_blob(podcast_id: str, binary: bool = False) -> Union[str, bytes]:
+    """
+    Loads podcast metadata/data, preferring the dedicated prefix and falling back
+    to legacy root location for backward compatibility.
+    """
+    logging.debug(f"Loading podcast blob. podcast_id={podcast_id}, binary={binary}")
+    candidates = [
+        f"{PODCAST_METADATA_PREFIX}{podcast_id}.json",
+        f"{podcast_id}.json",
+    ]
+
+    not_found = 0
+    last_error: Optional[Exception] = None
+    for blob_name in candidates:
+        try:
+            result = _download_blob_by_name(blob_name, binary=binary)
+            logging.info(f"Podcast dataset loaded from Blob Storage via blob_name: {blob_name}")
+            return result
+        except ResourceNotFoundError:
+            not_found += 1
+            continue
+        except BlobDecodeError as e:
+            logging.error(f"Non-retryable decode error loading podcast blob {blob_name}: {e}")
+            raise
+        except Exception as e:
+            last_error = e
+            logging.error(f"Error loading podcast blob {blob_name}: {e}")
+
+    if not_found == len(candidates):
+        raise RuntimeError(f"Podcast blob not found for podcast_id: {podcast_id}")
+    raise RuntimeError(f"Error loading podcast blob for podcast_id {podcast_id}: {last_error}")
+
+
+def delete_podcast_blob(podcast_id: str) -> str:
+    """
+    Deletes podcast metadata/data from prefixed storage and legacy fallback location.
+    """
+    logging.debug(f"Deleting podcast blob. podcast_id={podcast_id}")
+    candidates = [
+        f"{PODCAST_METADATA_PREFIX}{podcast_id}.json",
+        f"{podcast_id}.json",
+    ]
+    deleted = False
+    last_error: Optional[Exception] = None
+
+    for blob_name in candidates:
+        try:
+            blob_client = blob_container_client.get_blob_client(blob_name)
+            blob_client.delete_blob()
+            deleted = True
+        except ResourceNotFoundError:
+            continue
+        except Exception as e:
+            last_error = e
+            logging.error(f"Error deleting podcast blob {blob_name}: {e}")
+
+    if deleted:
+        logging.info(f"Podcast dataset deleted from Blob Storage with podcast_id: {podcast_id}")
+        return podcast_id
+    if last_error is not None:
+        raise RuntimeError(f"Error deleting podcast blob for podcast_id {podcast_id}: {last_error}")
+    raise RuntimeError(f"Podcast blob not found for podcast_id: {podcast_id}")
+
 def load_from_blob_storage(instance_id: str, binary: bool = False) -> Union[str, bytes]:
     """
     Loads data from Azure Blob Storage using an instance_id.
@@ -73,12 +217,12 @@ def load_from_blob_storage(instance_id: str, binary: bool = False) -> Union[str,
     logging.debug(f"Loading data from blob storage. instance_id={instance_id}, binary={binary}")
     try:
         blob_name = f"{instance_id}.json"
-        blob_client = blob_container_client.get_blob_client(blob_name)
-        blob_data = blob_client.download_blob().readall()
+        blob_data = _download_blob_by_name(blob_name, binary=binary)
         logging.info(f"Dataset loaded from Blob Storage with instance_id: {instance_id}")
-        if binary:
-            return blob_data
-        return blob_data.decode("utf-8")
+        return blob_data
+    except BlobDecodeError as e:
+        logging.error(f"Non-retryable decode error loading from Blob Storage: {e}")
+        raise
     except Exception as e:
         logging.error(f"Error loading from Blob Storage: {e}")
         raise RuntimeError(f"Error loading from Blob Storage: {e}")

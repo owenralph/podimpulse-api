@@ -4,7 +4,7 @@ import json
 from typing import Optional
 import pandas as pd
 import numpy as np
-from utils.azure_blob import load_from_blob_storage
+from utils.azure_blob import load_podcast_blob
 from utils.retry import retry_with_backoff
 from utils import validate_http_method, handle_blob_operation, error_response, json_response
 
@@ -36,7 +36,7 @@ def trend(req: func.HttpRequest) -> func.HttpResponse:
 
     blob_data, err = handle_blob_operation(
         retry_with_backoff(
-            lambda: load_from_blob_storage(podcast_id),
+            lambda: load_podcast_blob(podcast_id),
             exceptions=(RuntimeError,),
             max_attempts=3,
             initial_delay=1.0,

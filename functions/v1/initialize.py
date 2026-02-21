@@ -4,7 +4,12 @@ import logging
 import json
 import time
 from utils.retry import retry_with_backoff
-from utils.azure_blob import save_to_blob_storage, load_from_blob_storage
+from utils.azure_blob import (
+    save_podcast_blob,
+    load_podcast_blob,
+    list_podcast_ids,
+    delete_podcast_blob,
+)
 
 def initialize(req: func.HttpRequest) -> func.HttpResponse:
     """
@@ -22,13 +27,12 @@ def initialize(req: func.HttpRequest) -> func.HttpResponse:
 
     if req.method == "GET":
         try:
-            from utils.azure_blob import list_all_blob_ids
-            existing_ids = list_all_blob_ids()
+            existing_ids = list_podcast_ids(include_legacy=True)
             podcasts = []
             for pid in existing_ids:
                 blob_data, err = handle_blob_operation(
                     retry_with_backoff(
-                        lambda: load_from_blob_storage(pid),
+                        lambda: load_podcast_blob(pid),
                         exceptions=(RuntimeError,),
                         max_attempts=2,
                         initial_delay=0.5,
@@ -68,12 +72,11 @@ def initialize(req: func.HttpRequest) -> func.HttpResponse:
     # Check for duplicate podcast by title or rss_url (optional, but good RESTful practice)
     # This requires listing all blobs and checking their contents
     try:
-        from utils.azure_blob import list_all_blob_ids
-        existing_ids = list_all_blob_ids()
+        existing_ids = list_podcast_ids(include_legacy=True)
         for pid in existing_ids:
             blob_data, err = handle_blob_operation(
                 retry_with_backoff(
-                    lambda: load_from_blob_storage(pid),
+                    lambda: load_podcast_blob(pid),
                     exceptions=(RuntimeError,),
                     max_attempts=2,
                     initial_delay=0.5,
@@ -96,7 +99,13 @@ def initialize(req: func.HttpRequest) -> func.HttpResponse:
     # Save the podcast metadata to Azure Blob Storage with retry
     save_start = time.time()
     podcast_id, err = handle_blob_operation(
-        retry_with_backoff(lambda: save_to_blob_storage(podcast_metadata), exceptions=(RuntimeError,), max_attempts=3, initial_delay=1.0, backoff_factor=2.0)
+        retry_with_backoff(
+            lambda: save_podcast_blob(podcast_metadata),
+            exceptions=(RuntimeError,),
+            max_attempts=3,
+            initial_delay=1.0,
+            backoff_factor=2.0,
+        )
     )
     if err:
         return error_response("Failed to create podcast.", 500)
@@ -128,7 +137,7 @@ def podcast_resource(req: func.HttpRequest) -> func.HttpResponse:
         try:
             blob_data, err = handle_blob_operation(
                 retry_with_backoff(
-                    lambda: load_from_blob_storage(podcast_id),
+                    lambda: load_podcast_blob(podcast_id),
                     exceptions=(RuntimeError,),
                     max_attempts=3,
                     initial_delay=1.0,
@@ -164,7 +173,7 @@ def podcast_resource(req: func.HttpRequest) -> func.HttpResponse:
             else:  # PATCH
                 blob_data, err = handle_blob_operation(
                     retry_with_backoff(
-                        lambda: load_from_blob_storage(podcast_id),
+                        lambda: load_podcast_blob(podcast_id),
                         exceptions=(RuntimeError,),
                         max_attempts=3,
                         initial_delay=1.0,
@@ -180,7 +189,7 @@ def podcast_resource(req: func.HttpRequest) -> func.HttpResponse:
                     json_data["rss_url"] = rss_url
             _, err = handle_blob_operation(
                 retry_with_backoff(
-                    lambda: save_to_blob_storage(json.dumps(json_data), podcast_id),
+                    lambda: save_podcast_blob(json.dumps(json_data), podcast_id),
                     exceptions=(RuntimeError,),
                     max_attempts=3,
                     initial_delay=1.0,
@@ -203,12 +212,9 @@ def podcast_resource(req: func.HttpRequest) -> func.HttpResponse:
 
     elif req.method == "DELETE":
         try:
-            # Optionally, delete all blobs/data for this podcast_id
-            # For now, just delete the main metadata blob
-            from utils.azure_blob import delete_blob_from_storage
             _, err = handle_blob_operation(
                 retry_with_backoff(
-                    lambda: delete_blob_from_storage(podcast_id),
+                    lambda: delete_podcast_blob(podcast_id),
                     exceptions=(RuntimeError,),
                     max_attempts=3,
                     initial_delay=1.0,

@@ -88,14 +88,14 @@ class CsvValidationTests(unittest.TestCase):
         self.assertEqual(int(gaps.median()), 1)
 
     @patch("functions.v1.ingest.parse_rss_feed")
-    @patch("functions.v1.ingest.save_to_blob_storage")
+    @patch("functions.v1.ingest.save_podcast_blob")
     @patch("functions.v1.ingest.requests.get")
-    @patch("functions.v1.ingest.load_from_blob_storage")
+    @patch("functions.v1.ingest.load_podcast_blob")
     def test_ingest_returns_400_for_monthly_data(
         self,
-        mock_load_from_blob_storage,
+        mock_load_podcast_blob,
         mock_requests_get,
-        mock_save_to_blob_storage,
+        mock_save_podcast_blob,
         mock_parse_rss_feed,
     ):
         rows = ["Date,Downloads"]
@@ -104,14 +104,14 @@ class CsvValidationTests(unittest.TestCase):
             rows.append(f"{date_value.strftime('%Y-%m-%d')},{200 + idx}")
         csv_text = "\n".join(rows)
 
-        mock_load_from_blob_storage.return_value = json.dumps(
+        mock_load_podcast_blob.return_value = json.dumps(
             {"title": "Podcast", "rss_url": "https://example.com/feed.xml"}
         )
         mock_requests_get.return_value = _FakeHttpResponse(
             content=csv_text.encode("utf-8"),
             status_code=200,
         )
-        mock_save_to_blob_storage.return_value = "pod-1"
+        mock_save_podcast_blob.return_value = "pod-1"
         mock_parse_rss_feed.return_value = pd.DataFrame(
             {"Date": pd.to_datetime(["2024-01-01"], utc=True), "Title": ["Episode 1"]}
         )
@@ -135,14 +135,14 @@ class CsvValidationTests(unittest.TestCase):
     @patch("functions.v1.ingest.perform_spike_clustering")
     @patch("functions.v1.ingest.add_episode_counts_and_titles")
     @patch("functions.v1.ingest.parse_rss_feed")
-    @patch("functions.v1.ingest.save_to_blob_storage")
+    @patch("functions.v1.ingest.save_podcast_blob")
     @patch("functions.v1.ingest.requests.get")
-    @patch("functions.v1.ingest.load_from_blob_storage")
+    @patch("functions.v1.ingest.load_podcast_blob")
     def test_ingest_resample_daily_accepts_monthly_data_with_warning(
         self,
-        mock_load_from_blob_storage,
+        mock_load_podcast_blob,
         mock_requests_get,
-        mock_save_to_blob_storage,
+        mock_save_podcast_blob,
         mock_parse_rss_feed,
         mock_add_episode_counts_and_titles,
         mock_perform_spike_clustering,
@@ -155,14 +155,14 @@ class CsvValidationTests(unittest.TestCase):
             rows.append(f"{date_value.strftime('%Y-%m-%d')},{300 + idx}")
         csv_text = "\n".join(rows)
 
-        mock_load_from_blob_storage.return_value = json.dumps(
+        mock_load_podcast_blob.return_value = json.dumps(
             {"title": "Podcast", "rss_url": "https://example.com/feed.xml"}
         )
         mock_requests_get.return_value = _FakeHttpResponse(
             content=csv_text.encode("utf-8"),
             status_code=200,
         )
-        mock_save_to_blob_storage.return_value = "pod-1"
+        mock_save_podcast_blob.return_value = "pod-1"
         mock_parse_rss_feed.return_value = pd.DataFrame(
             {"Date": pd.to_datetime(["2024-01-01"], utc=True), "Title": ["Episode 1"]}
         )

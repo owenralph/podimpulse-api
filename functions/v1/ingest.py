@@ -2,7 +2,7 @@ import logging
 import azure.functions as func
 from utils.csv_parser import parse_csv, validate_downloads_dataframe
 from utils.rss_parser import parse_rss_feed
-from utils.azure_blob import save_to_blob_storage, load_from_blob_storage
+from utils.azure_blob import load_podcast_blob, save_podcast_blob
 from utils.spike_clustering import perform_spike_clustering
 from utils.missing_episodes import mark_potential_missing_episodes
 from utils.constants import ERROR_MISSING_CSV
@@ -43,7 +43,7 @@ def ingest(req: func.HttpRequest) -> func.HttpResponse:
         try:
             blob_data, err = handle_blob_operation(
                 retry_with_backoff(
-                    lambda: load_from_blob_storage(podcast_id),
+                    lambda: load_podcast_blob(podcast_id),
                     exceptions=(RuntimeError,),
                     max_attempts=3,
                     initial_delay=1.0,
@@ -66,7 +66,7 @@ def ingest(req: func.HttpRequest) -> func.HttpResponse:
         try:
             blob_data, err = handle_blob_operation(
                 retry_with_backoff(
-                    lambda: load_from_blob_storage(podcast_id),
+                    lambda: load_podcast_blob(podcast_id),
                     exceptions=(RuntimeError,),
                     max_attempts=3,
                     initial_delay=1.0,
@@ -79,7 +79,7 @@ def ingest(req: func.HttpRequest) -> func.HttpResponse:
             json_data["data"] = []
             _, err = handle_blob_operation(
                 retry_with_backoff(
-                    lambda: save_to_blob_storage(json.dumps(json_data), podcast_id),
+                    lambda: save_podcast_blob(json.dumps(json_data), podcast_id),
                     exceptions=(RuntimeError,),
                     max_attempts=3,
                     initial_delay=1.0,
@@ -158,7 +158,7 @@ def ingest(req: func.HttpRequest) -> func.HttpResponse:
     # Load blob data to retrieve RSS URL with retry
     blob_data, err = handle_blob_operation(
         retry_with_backoff(
-            lambda: load_from_blob_storage(podcast_id),
+            lambda: load_podcast_blob(podcast_id),
             exceptions=(RuntimeError, ),
             max_attempts=3,
             initial_delay=1.0,
@@ -297,7 +297,7 @@ def ingest(req: func.HttpRequest) -> func.HttpResponse:
     # Save updated blob data with retry
     _, err = handle_blob_operation(
         retry_with_backoff(
-            lambda: save_to_blob_storage(json.dumps(json_data), podcast_id),
+            lambda: save_podcast_blob(json.dumps(json_data), podcast_id),
             exceptions=(RuntimeError, ),
             max_attempts=3,
             initial_delay=1.0,

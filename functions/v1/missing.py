@@ -1,7 +1,7 @@
 import azure.functions as func
 import logging
 import json
-from utils.azure_blob import load_from_blob_storage, save_to_blob_storage
+from utils.azure_blob import load_podcast_blob, save_podcast_blob
 from utils.retry import retry_with_backoff
 import pandas as pd
 from typing import Optional
@@ -26,7 +26,7 @@ def missing(req: func.HttpRequest) -> func.HttpResponse:
     # Load blob data with retry
     blob_data, err = handle_blob_operation(
         retry_with_backoff(
-            lambda: load_from_blob_storage(podcast_id),
+            lambda: load_podcast_blob(podcast_id),
             exceptions=(RuntimeError,),
             max_attempts=3,
             initial_delay=1.0,
@@ -110,7 +110,7 @@ def missing(req: func.HttpRequest) -> func.HttpResponse:
         json_data["data"] = downloads_df.to_dict(orient="records")
         _, err = handle_blob_operation(
             retry_with_backoff(
-                lambda: save_to_blob_storage(json.dumps(json_data), podcast_id),
+                lambda: save_podcast_blob(json.dumps(json_data), podcast_id),
                 exceptions=(RuntimeError,),
                 max_attempts=3,
                 initial_delay=1.0,

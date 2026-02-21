@@ -50,6 +50,24 @@ class RuntimeFixesTests(unittest.TestCase):
         self.assertEqual(wrapped(), "ok")
         self.assertEqual(state["attempts"], 3)
 
+    def test_retry_with_backoff_does_not_retry_non_matching_exception(self):
+        state = {"attempts": 0}
+
+        def non_retryable():
+            state["attempts"] += 1
+            raise ValueError("permanent decode error")
+
+        wrapped = retry_with_backoff(
+            non_retryable,
+            exceptions=(RuntimeError,),
+            max_attempts=3,
+            initial_delay=0,
+            backoff_factor=1,
+        )
+        with self.assertRaises(ValueError):
+            wrapped()
+        self.assertEqual(state["attempts"], 1)
+
     def test_determine_optimal_clusters_single_sample(self):
         self.assertEqual(determine_optimal_clusters([[1.0, 2.0, 3.0]], max_clusters=10), 1)
 
@@ -70,7 +88,7 @@ class RuntimeFixesTests(unittest.TestCase):
         self.assertIn("Clustered_Episode_Titles", result.columns)
         self.assertEqual(len(result), 2)
 
-    @patch("functions.v1.trend.load_from_blob_storage")
+    @patch("functions.v1.trend.load_podcast_blob")
     def test_trend_reads_payload_data(self, mock_load):
         mock_load.return_value = json.dumps(
             {

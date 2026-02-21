@@ -97,6 +97,41 @@ class BlobAzuriteIntegrationTests(unittest.TestCase):
 
         self.azure_blob.delete_blob_from_storage(instance_id)
 
+    def test_load_from_blob_storage_non_utf8_raises_value_error(self):
+        payload = b"\x80\x81binary"
+        instance_id = f"itest-decode-{uuid.uuid4().hex}"
+        try:
+            self.azure_blob.save_to_blob_storage(payload, instance_id)
+            with self.assertRaises(ValueError):
+                self.azure_blob.load_from_blob_storage(instance_id)
+        finally:
+            try:
+                self.azure_blob.delete_blob_from_storage(instance_id)
+            except Exception:
+                pass
+
+    def test_podcast_blob_listing_filters_non_podcast_artifacts(self):
+        podcast_id = str(uuid.uuid4())
+        artifact_id = f"{podcast_id}_ridge_model.joblib"
+        payload = {"title": "Pod", "rss_url": "https://example.com/feed.xml"}
+
+        try:
+            self.azure_blob.save_podcast_blob(json.dumps(payload), podcast_id)
+            self.azure_blob.save_to_blob_storage(b"\x00\x01artifact", artifact_id)
+
+            podcast_ids = self.azure_blob.list_podcast_ids(include_legacy=True)
+            self.assertIn(podcast_id, podcast_ids)
+            self.assertNotIn(artifact_id, podcast_ids)
+        finally:
+            try:
+                self.azure_blob.delete_podcast_blob(podcast_id)
+            except Exception:
+                pass
+            try:
+                self.azure_blob.delete_blob_from_storage(artifact_id)
+            except Exception:
+                pass
+
     def test_initialize_handler_roundtrip_against_azurite(self):
         title = f"Azurite Podcast {uuid.uuid4().hex[:8]}"
         rss_url = "https://example.com/feed.xml"

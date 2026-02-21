@@ -4,7 +4,7 @@ import json
 import pandas as pd
 import numpy as np
 from typing import Optional
-from utils.azure_blob import load_from_blob_storage, save_to_blob_storage
+from utils.azure_blob import load_from_blob_storage, save_to_blob_storage, load_podcast_blob
 from utils.retry import retry_with_backoff
 from sklearn.linear_model import Ridge
 from sklearn.feature_selection import RFECV
@@ -65,7 +65,7 @@ def regression(req: func.HttpRequest) -> func.HttpResponse:
             # Load blob data with retry
             blob_data, err = handle_blob_operation(
                 retry_with_backoff(
-                    lambda: load_from_blob_storage(podcast_id),
+                    lambda: load_podcast_blob(podcast_id),
                     exceptions=(RuntimeError, ),
                     max_attempts=3,
                     initial_delay=1.0,

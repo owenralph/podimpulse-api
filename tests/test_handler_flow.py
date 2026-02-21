@@ -129,19 +129,20 @@ class HandlerFlowTests(unittest.TestCase):
             return value
 
         patch_specs = [
-            ("functions.v1.ingest.load_from_blob_storage", fake_load_from_blob_storage),
-            ("functions.v1.ingest.save_to_blob_storage", fake_save_to_blob_storage),
+            ("functions.v1.ingest.load_podcast_blob", fake_load_from_blob_storage),
+            ("functions.v1.ingest.save_podcast_blob", fake_save_to_blob_storage),
             ("functions.v1.ingest.parse_csv", fake_parse_csv),
             ("functions.v1.ingest.parse_rss_feed", fake_parse_rss_feed),
             ("functions.v1.ingest.add_episode_counts_and_titles", fake_add_episode_counts_and_titles),
             ("functions.v1.ingest.perform_spike_clustering", fake_perform_spike_clustering),
             ("functions.v1.ingest.mark_potential_missing_episodes", fake_mark_missing),
             ("functions.v1.ingest.requests.get", fake_requests_get),
-            ("functions.v1.regression.load_from_blob_storage", fake_load_from_blob_storage),
+            ("functions.v1.regression.load_podcast_blob", fake_load_from_blob_storage),
             ("functions.v1.regression.save_to_blob_storage", fake_save_to_blob_storage),
+            ("functions.v1.predict.load_podcast_blob", fake_load_from_blob_storage),
             ("functions.v1.predict.load_from_blob_storage", fake_load_from_blob_storage),
             ("functions.v1.predict.save_to_blob_storage", fake_save_to_blob_storage),
-            ("functions.v1.trend.load_from_blob_storage", fake_load_from_blob_storage),
+            ("functions.v1.trend.load_podcast_blob", fake_load_from_blob_storage),
             ("functions.v1.impact.load_json_from_blob", fake_load_json_from_blob),
         ]
 
