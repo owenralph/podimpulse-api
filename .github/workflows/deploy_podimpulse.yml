@@ -229,6 +229,7 @@ jobs:
           pip install requests
           BASE_URL="https://${PRODUCTION_APP_NAME}.azurewebsites.net/api"
           FUNCTION_KEY="${{ steps.get_prod_key.outputs.function_key }}"
+          export BASE_URL FUNCTION_KEY
           python - << 'PY'
           import os
           import requests
