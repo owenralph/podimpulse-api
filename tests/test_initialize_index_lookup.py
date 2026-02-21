@@ -36,18 +36,13 @@ def _no_retry(func, exceptions, max_attempts=3, initial_delay=1.0, backoff_facto
 
 
 class InitializeIndexLookupTests(unittest.TestCase):
-    def setUp(self):
-        initialize_module._INDEX_BOOTSTRAP_DONE = False
-
     @patch("functions.v1.initialize.retry_with_backoff", side_effect=_no_retry)
-    @patch("functions.v1.initialize._bootstrap_podcast_indexes_if_needed")
     @patch("functions.v1.initialize.get_podcast_id_from_index", return_value="existing-podcast")
     @patch("functions.v1.initialize.create_podcast_index")
     def test_create_conflict_from_index_returns_409(
         self,
         mock_create_index,
         _mock_get_index,
-        _mock_bootstrap,
         _mock_retry,
     ):
         req = FakeRequest(
@@ -62,7 +57,6 @@ class InitializeIndexLookupTests(unittest.TestCase):
         mock_create_index.assert_not_called()
 
     @patch("functions.v1.initialize.retry_with_backoff", side_effect=_no_retry)
-    @patch("functions.v1.initialize._bootstrap_podcast_indexes_if_needed")
     @patch("functions.v1.initialize.get_podcast_id_from_index", return_value=None)
     @patch("functions.v1.initialize.save_podcast_blob")
     @patch("functions.v1.initialize.create_podcast_index")
@@ -73,7 +67,6 @@ class InitializeIndexLookupTests(unittest.TestCase):
         mock_create_index,
         mock_save_blob,
         _mock_get_index,
-        _mock_bootstrap,
         _mock_retry,
     ):
         mock_uuid4.return_value = "11111111-1111-1111-1111-111111111111"
@@ -94,7 +87,6 @@ class InitializeIndexLookupTests(unittest.TestCase):
         mock_save_blob.assert_called_once()
 
     @patch("functions.v1.initialize.retry_with_backoff", side_effect=_no_retry)
-    @patch("functions.v1.initialize._bootstrap_podcast_indexes_if_needed")
     @patch("functions.v1.initialize.get_podcast_id_from_index", return_value=None)
     @patch("functions.v1.initialize.delete_podcast_index")
     @patch("functions.v1.initialize.save_podcast_blob", side_effect=RuntimeError("save failed"))
@@ -107,7 +99,6 @@ class InitializeIndexLookupTests(unittest.TestCase):
         _mock_save_blob,
         mock_delete_index,
         _mock_get_index,
-        _mock_bootstrap,
         _mock_retry,
     ):
         mock_uuid4.return_value = "22222222-2222-2222-2222-222222222222"

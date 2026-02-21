@@ -4,7 +4,6 @@ import logging
 import json
 import time
 import uuid
-import threading
 from utils.retry import retry_with_backoff
 from utils.azure_blob import (
     save_podcast_blob,
@@ -16,58 +15,6 @@ from utils.azure_blob import (
     delete_podcast_index,
     PodcastIndexConflictError,
 )
-
-_INDEX_BOOTSTRAP_DONE = False
-_INDEX_BOOTSTRAP_LOCK = threading.Lock()
-
-
-def _bootstrap_podcast_indexes_if_needed() -> None:
-    """
-    One-time in-process bootstrap to index legacy records for fast duplicate lookup.
-    """
-    global _INDEX_BOOTSTRAP_DONE
-    if _INDEX_BOOTSTRAP_DONE:
-        return
-
-    with _INDEX_BOOTSTRAP_LOCK:
-        if _INDEX_BOOTSTRAP_DONE:
-            return
-
-        logging.info("Bootstrapping podcast indexes for legacy records.")
-        indexed_count = 0
-        existing_ids = list_podcast_ids(include_legacy=True)
-        for pid in existing_ids:
-            blob_data, err = handle_blob_operation(
-                retry_with_backoff(
-                    lambda: load_podcast_blob(pid),
-                    exceptions=(RuntimeError,),
-                    max_attempts=1,
-                    initial_delay=0.0,
-                    backoff_factor=1.0,
-                )
-            )
-            if err or not blob_data:
-                continue
-            try:
-                pdata = json.loads(blob_data)
-            except Exception:
-                continue
-
-            title = pdata.get("title")
-            rss_url = pdata.get("rss_url")
-            if not title or not rss_url:
-                continue
-
-            try:
-                create_podcast_index("title", title, pid, overwrite=True)
-                create_podcast_index("rss", rss_url, pid, overwrite=True)
-                indexed_count += 1
-            except Exception as e:
-                logging.warning(f"Failed to bootstrap index for podcast_id={pid}: {e}")
-
-        _INDEX_BOOTSTRAP_DONE = True
-        logging.info(f"Podcast index bootstrap complete. indexed_count={indexed_count}")
-
 
 def initialize(req: func.HttpRequest) -> func.HttpResponse:
     """
@@ -126,11 +73,6 @@ def initialize(req: func.HttpRequest) -> func.HttpResponse:
     rss_url = request_data.get("rss_url")
     if not title or not rss_url:
         return error_response("Missing or invalid title or rss_url.", 400)
-
-    try:
-        _bootstrap_podcast_indexes_if_needed()
-    except Exception as e:
-        logging.warning(f"Could not bootstrap podcast indexes: {e}")
 
     try:
         existing_by_title = get_podcast_id_from_index("title", title)
