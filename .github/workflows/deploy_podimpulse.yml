@@ -63,7 +63,7 @@ jobs:
     needs: package
     runs-on: ubuntu-latest
     environment: staging
-    if: ${{ env.AZURE_RESOURCE_GROUP != '' && env.STAGING_APP_NAME != '' }}
+    if: ${{ vars.AZURE_RESOURCE_GROUP != '' && vars.AZURE_FUNCTIONAPP_STAGING != '' }}
 
     steps:
       - name: Download source artifact
@@ -173,7 +173,7 @@ jobs:
     needs: deploy-staging
     runs-on: ubuntu-latest
     environment: production
-    if: ${{ env.AZURE_RESOURCE_GROUP != '' && env.PRODUCTION_APP_NAME != '' }}
+    if: ${{ vars.AZURE_RESOURCE_GROUP != '' && vars.AZURE_FUNCTIONAPP_PRODUCTION != '' }}
 
     steps:
       - name: Download source artifact
