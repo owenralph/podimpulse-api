@@ -1,6 +1,6 @@
 import logging
 import azure.functions as func
-from utils.csv_parser import parse_csv
+from utils.csv_parser import parse_csv, validate_downloads_dataframe
 from utils.rss_parser import parse_rss_feed
 from utils.azure_blob import save_to_blob_storage, load_from_blob_storage
 from utils.spike_clustering import perform_spike_clustering
@@ -99,6 +99,8 @@ def ingest(req: func.HttpRequest) -> func.HttpResponse:
     request_data = None
     csv_data = None
     csv_url = None
+    query_params = getattr(req, "params", {}) or {}
+    frequency_mode = query_params.get("frequency_mode", "strict")
 
     if is_multipart:
         # Handle file upload
@@ -135,12 +137,23 @@ def ingest(req: func.HttpRequest) -> func.HttpResponse:
             }), status_code=400)
         # Validate inputs
         csv_url = request_data.get('csv_url')
+        frequency_mode = request_data.get("frequency_mode", frequency_mode)
         if not csv_url:
             logging.error(ERROR_MISSING_CSV)
             return func.HttpResponse(json.dumps({
                 "message": ERROR_MISSING_CSV,
                 "result": None
             }), status_code=400)
+
+    allowed_frequency_modes = {"strict", "resample_daily"}
+    if frequency_mode not in allowed_frequency_modes:
+        return func.HttpResponse(json.dumps({
+            "message": (
+                f"Invalid frequency_mode '{frequency_mode}'. "
+                f"Allowed values: {sorted(allowed_frequency_modes)}."
+            ),
+            "result": None
+        }), status_code=400)
 
     # Load blob data to retrieve RSS URL with retry
     blob_data, err = handle_blob_operation(
@@ -193,6 +206,17 @@ def ingest(req: func.HttpRequest) -> func.HttpResponse:
     try:
         csv_file_like = io.StringIO(csv_data)
         downloads_df = parse_csv(csv_file_like)
+        downloads_df = validate_downloads_dataframe(downloads_df, frequency_mode=frequency_mode)
+        ingestion_warnings = []
+        frequency_warning = downloads_df.attrs.get("input_frequency_warning")
+        if frequency_warning:
+            ingestion_warnings.append(frequency_warning)
+    except ValueError as e:
+        logging.warning(f"CSV validation failed: {e}")
+        return func.HttpResponse(json.dumps({
+            "message": str(e),
+            "result": None
+        }), status_code=400)
     except Exception as e:
         logging.error(f"Failed to parse CSV: {e}", exc_info=True)
         return func.HttpResponse(json.dumps({
@@ -260,6 +284,8 @@ def ingest(req: func.HttpRequest) -> func.HttpResponse:
         result_json = downloads_df.to_json(orient="records")
         if csv_url:
             json_data["csv_url"] = csv_url
+        if ingestion_warnings:
+            json_data["ingest_warnings"] = ingestion_warnings
         json_data["data"] = json.loads(result_json)
     except Exception as e:
         logging.error(f"Failed to convert results to JSON: {e}", exc_info=True)
@@ -301,6 +327,8 @@ def ingest(req: func.HttpRequest) -> func.HttpResponse:
                 "potential_missing_episodes": missing_dates_list
             }
         }
+        if ingestion_warnings:
+            response["result"]["warnings"] = ingestion_warnings
         return json_response(response, 200)
     except Exception as e:
         logging.error(f"Error preparing response: {e}", exc_info=True)

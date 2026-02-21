@@ -344,6 +344,17 @@ paths:
       description: >
         Accepts either a CSV file upload (multipart/form-data) or a JSON body with a CSV URL.
         Processes the data, enriches it with episode counts, clustering, missing episode detection, and seasonality features, and updates the instance's blob storage.
+      parameters:
+        - in: query
+          name: frequency_mode
+          required: false
+          schema:
+            type: string
+            enum: [strict, resample_daily]
+            default: strict
+          description: >
+            Controls handling of non-daily data cadence.
+            strict rejects weekly/monthly spacing; resample_daily interpolates to daily values with a warning.
       requestBody:
         required: true
         content:
@@ -362,6 +373,13 @@ paths:
                 csv_url:
                   type: string
                   description: URL to a CSV file containing podcast download data.
+                frequency_mode:
+                  type: string
+                  enum: [strict, resample_daily]
+                  default: strict
+                  description: >
+                    Controls handling of non-daily data cadence.
+                    strict rejects weekly/monthly spacing; resample_daily interpolates to daily values with a warning.
       responses:
         '200':
           description: Data processed successfully.
@@ -388,6 +406,11 @@ paths:
                         items:
                           type: string
                           format: date
+                      warnings:
+                        type: array
+                        items:
+                          type: string
+                        description: Optional warnings about data quality adjustments (for example cadence resampling).
         '400':
           description: Bad request (missing or invalid input).
           content:
