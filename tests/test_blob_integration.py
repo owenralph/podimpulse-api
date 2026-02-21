@@ -17,6 +17,22 @@ AZURITE_CONNECTION_STRING = (
 )
 
 
+class FakeRequest:
+    def __init__(self, method="GET", route_params=None, json_body=None, params=None, headers=None):
+        self.method = method
+        self.route_params = route_params or {}
+        self.params = params or {}
+        self.headers = headers or {}
+        self._json_body = json_body
+        self.files = {}
+        self.form = {}
+
+    def get_json(self):
+        if self._json_body is None:
+            raise ValueError("Invalid JSON body")
+        return self._json_body
+
+
 class BlobAzuriteIntegrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -47,6 +63,8 @@ class BlobAzuriteIntegrationTests(unittest.TestCase):
 
         importlib.reload(constants)
         cls.azure_blob = importlib.reload(azure_blob)
+        import functions.v1.initialize as initialize_module
+        cls.initialize_module = importlib.reload(initialize_module)
 
     def test_blob_json_roundtrip_list_and_delete(self):
         payload = {"message": "hello", "value": 123}
@@ -78,6 +96,38 @@ class BlobAzuriteIntegrationTests(unittest.TestCase):
         self.assertEqual(loaded_bytes, payload)
 
         self.azure_blob.delete_blob_from_storage(instance_id)
+
+    def test_initialize_handler_roundtrip_against_azurite(self):
+        title = f"Azurite Podcast {uuid.uuid4().hex[:8]}"
+        rss_url = "https://example.com/feed.xml"
+        podcast_id = None
+        try:
+            create_req = FakeRequest(
+                method="POST",
+                json_body={"title": title, "rss_url": rss_url},
+            )
+            create_resp = self.initialize_module.initialize(create_req)
+            self.assertEqual(create_resp.status_code, 201)
+            create_body = json.loads(create_resp.get_body().decode("utf-8"))
+            podcast_id = create_body["result"]["podcast_id"]
+
+            list_req = FakeRequest(method="GET")
+            list_resp = self.initialize_module.initialize(list_req)
+            self.assertEqual(list_resp.status_code, 200)
+            list_body = json.loads(list_resp.get_body().decode("utf-8"))
+            listed_ids = {item["podcast_id"] for item in list_body["result"]}
+            self.assertIn(podcast_id, listed_ids)
+
+            get_req = FakeRequest(method="GET", route_params={"podcast_id": podcast_id})
+            get_resp = self.initialize_module.podcast_resource(get_req)
+            self.assertEqual(get_resp.status_code, 200)
+            get_body = json.loads(get_resp.get_body().decode("utf-8"))
+            self.assertEqual(get_body["result"]["title"], title)
+            self.assertEqual(get_body["result"]["rss_url"], rss_url)
+        finally:
+            if podcast_id:
+                delete_req = FakeRequest(method="DELETE", route_params={"podcast_id": podcast_id})
+                self.initialize_module.podcast_resource(delete_req)
 
 
 if __name__ == "__main__":
