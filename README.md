@@ -73,6 +73,32 @@ GitHub Actions workflow: `.github/workflows/main_podimpulse.yml`
 - `unit-tests` runs pure unit tests.
 - `integration-azurite` runs blob integration tests against Azurite service container.
 
+## CD
+
+GitHub Actions workflow: `.github/workflows/deploy_podimpulse.yml`
+
+Deployment flow:
+1. Trigger after successful `CI` run on `main` (or manual `workflow_dispatch`).
+2. Build one source artifact for the target commit.
+3. Deploy to staging Azure Function App.
+4. Run staging smoke tests (`/podcasts`, `/ingest`, `/regression`, `/predict`, `/trend`, `/impact`, `/missing`).
+5. Deploy the same artifact to production (GitHub environment-gated).
+6. Run production smoke check.
+
+Required GitHub repository variables:
+- `AZURE_RESOURCE_GROUP`
+- `AZURE_FUNCTIONAPP_STAGING`
+- `AZURE_FUNCTIONAPP_PRODUCTION`
+
+Required GitHub repository secrets (OIDC service principal):
+- `AZURE_CLIENT_ID`
+- `AZURE_TENANT_ID`
+- `AZURE_SUBSCRIPTION_ID`
+
+Recommended environment protection:
+- Create `staging` and `production` environments in GitHub.
+- Require manual approval for `production`.
+
 ## Observability
 
 Operational metrics and alert queries are documented in `docs/ops-observability.md`.

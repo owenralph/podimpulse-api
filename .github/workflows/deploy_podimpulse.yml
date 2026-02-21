@@ -1,0 +1,241 @@
+name: CD
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to deploy (branch, tag, or SHA)"
+        required: true
+        default: "main"
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+  STAGING_APP_NAME: ${{ vars.AZURE_FUNCTIONAPP_STAGING }}
+  PRODUCTION_APP_NAME: ${{ vars.AZURE_FUNCTIONAPP_PRODUCTION }}
+
+jobs:
+  package:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    outputs:
+      deploy_ref: ${{ steps.resolve-ref.outputs.deploy_ref }}
+
+    steps:
+      - name: Resolve deployment ref
+        id: resolve-ref
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+            echo "deploy_ref=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy_ref=${{ inputs.ref }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout deployment ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.resolve-ref.outputs.deploy_ref }}
+
+      - name: Build source artifact
+        shell: bash
+        run: |
+          zip -r podimpulse-source.zip . \
+            -x ".git/*" ".venv/*" "__pycache__/*" "*.pyc" "*.pyo" "*.pyd" \
+               ".pytest_cache/*" ".mypy_cache/*" "node_modules/*" \
+               "deploy-main.zip" "patch-rss.zip" "gh-job.html"
+
+      - name: Upload source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: podimpulse-source
+          path: podimpulse-source.zip
+          retention-days: 30
+
+  deploy-staging:
+    needs: package
+    runs-on: ubuntu-latest
+    environment: staging
+    if: ${{ env.AZURE_RESOURCE_GROUP != '' && env.STAGING_APP_NAME != '' }}
+
+    steps:
+      - name: Download source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: podimpulse-source
+
+      - name: Extract source artifact
+        shell: bash
+        run: |
+          mkdir -p deploy-src
+          unzip -q podimpulse-source.zip -d deploy-src
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Azure Functions Core Tools
+        run: npm install -g azure-functions-core-tools@4 --unsafe-perm true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy to staging
+        working-directory: deploy-src
+        shell: bash
+        run: |
+          func azure functionapp publish "$STAGING_APP_NAME" --python --build remote --nozip --force
+
+      - name: Smoke test staging
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+          FUNCTION_KEY=$(az functionapp keys list --resource-group "$AZURE_RESOURCE_GROUP" --name "$STAGING_APP_NAME" --query "functionKeys.default" -o tsv)
+          BASE_URL="https://${STAGING_APP_NAME}.azurewebsites.net/api"
+          export FUNCTION_KEY BASE_URL
+          python - << 'PY'
+          import json
+          import os
+          import time
+          import uuid
+          from datetime import date, timedelta
+          import requests
+
+          base_url = os.environ["BASE_URL"].rstrip("/")
+          function_key = os.environ["FUNCTION_KEY"]
+          session = requests.Session()
+          podcast_id = None
+          results = []
+
+          def call(name, method, path, params=None, json_body=None, files=None, timeout=180):
+            url = f"{base_url}{path}"
+            q = dict(params or {})
+            q["code"] = function_key
+            start = time.perf_counter()
+            resp = session.request(method, url, params=q, json=json_body, files=files, timeout=timeout)
+            ms = (time.perf_counter() - start) * 1000
+            results.append((name, resp.status_code, round(ms, 1), (resp.text or "")[:180].replace("\n", " ")))
+            return resp
+
+          try:
+            create = call("podcasts.post", "POST", "/v1/podcasts", json_body={
+              "title": f"CD Smoke {uuid.uuid4().hex[:8]}",
+              "rss_url": "https://feeds.simplecast.com/54nAGcIl"
+            })
+            create.raise_for_status()
+            podcast_id = create.json()["result"]["podcast_id"]
+
+            start = date(2025, 11, 1)
+            rows = ["Date,Downloads"]
+            for i in range(110):
+              d = start + timedelta(days=i)
+              rows.append(f"{d.isoformat()},{120 + ((i * 11) % 90) + i}")
+            csv_bytes = "\n".join(rows).encode("utf-8")
+            files = {"file": ("smoke.csv", csv_bytes, "text/csv")}
+
+            core = [
+              call("ingest.post", "POST", f"/v1/podcasts/{podcast_id}/ingest", files=files),
+              call("regression.post", "POST", f"/v1/podcasts/{podcast_id}/regression", json_body={"target_col": "Downloads"}),
+              call("predict.post", "POST", f"/v1/podcasts/{podcast_id}/predict", json_body={"episodes": 4, "release_dates": ["2026-03-20", "2026-03-27"]}),
+              call("trend.get", "GET", f"/v1/podcasts/{podcast_id}/trend", params={"days": "14"}),
+              call("impact.get", "GET", f"/v1/podcasts/{podcast_id}/impact"),
+              call("missing.get", "GET", f"/v1/podcasts/{podcast_id}/missing"),
+            ]
+            failures = [r for r in core if r.status_code >= 400]
+            for item in results:
+              print("|".join(map(str, item)))
+            if failures:
+              raise SystemExit("Staging smoke test failed.")
+          finally:
+            if podcast_id:
+              call("podcasts.delete", "DELETE", f"/v1/podcasts/{podcast_id}")
+          PY
+
+  deploy-production:
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    environment: production
+    if: ${{ env.AZURE_RESOURCE_GROUP != '' && env.PRODUCTION_APP_NAME != '' }}
+
+    steps:
+      - name: Download source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: podimpulse-source
+
+      - name: Extract source artifact
+        shell: bash
+        run: |
+          mkdir -p deploy-src
+          unzip -q podimpulse-source.zip -d deploy-src
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Azure Functions Core Tools
+        run: npm install -g azure-functions-core-tools@4 --unsafe-perm true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy to production
+        working-directory: deploy-src
+        shell: bash
+        run: |
+          func azure functionapp publish "$PRODUCTION_APP_NAME" --python --build remote --nozip --force
+
+      - name: Fetch production key
+        id: get_prod_key
+        shell: bash
+        run: |
+          echo "function_key=$(az functionapp keys list --resource-group "$AZURE_RESOURCE_GROUP" --name "$PRODUCTION_APP_NAME" --query "functionKeys.default" -o tsv)" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke test production
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+          BASE_URL="https://${PRODUCTION_APP_NAME}.azurewebsites.net/api"
+          FUNCTION_KEY="${{ steps.get_prod_key.outputs.function_key }}"
+          python - << 'PY'
+          import os
+          import requests
+          r = requests.get(
+            f"{os.environ['BASE_URL'].rstrip('/')}/v1/podcasts",
+            params={"code": os.environ["FUNCTION_KEY"]},
+            timeout=90,
+          )
+          print(r.status_code)
+          print((r.text or "")[:200])
+          if r.status_code >= 400:
+            raise SystemExit("Production smoke test failed.")
+          PY
