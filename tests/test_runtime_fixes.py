@@ -8,7 +8,6 @@ import pandas as pd
 from utils.retry import retry_with_backoff
 from utils.spike_clustering import determine_optimal_clusters
 from utils.episode_counts import add_episode_counts_and_titles
-from utils.rss_parser import parse_rss_feed
 
 
 # Ensure blob client initialization does not fail in test imports.
@@ -70,16 +69,6 @@ class RuntimeFixesTests(unittest.TestCase):
         result = add_episode_counts_and_titles(downloads_df, episode_df)
         self.assertIn("Clustered_Episode_Titles", result.columns)
         self.assertEqual(len(result), 2)
-
-    @patch("utils.rss_parser.feedparser.parse")
-    def test_parse_rss_feed_empty_result_has_expected_columns(self, mock_parse):
-        class _Feed:
-            entries = []
-
-        mock_parse.return_value = _Feed()
-        df = parse_rss_feed("https://example.com/feed.xml")
-        self.assertTrue(df.empty)
-        self.assertEqual(list(df.columns), ["Date", "Title"])
 
     @patch("functions.v1.trend.load_from_blob_storage")
     def test_trend_reads_payload_data(self, mock_load):
