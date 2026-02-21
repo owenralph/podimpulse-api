@@ -3,13 +3,71 @@ from utils import validate_http_method, json_response, handle_blob_operation, er
 import logging
 import json
 import time
+import uuid
+import threading
 from utils.retry import retry_with_backoff
 from utils.azure_blob import (
     save_podcast_blob,
     load_podcast_blob,
     list_podcast_ids,
     delete_podcast_blob,
+    get_podcast_id_from_index,
+    create_podcast_index,
+    delete_podcast_index,
+    PodcastIndexConflictError,
 )
+
+_INDEX_BOOTSTRAP_DONE = False
+_INDEX_BOOTSTRAP_LOCK = threading.Lock()
+
+
+def _bootstrap_podcast_indexes_if_needed() -> None:
+    """
+    One-time in-process bootstrap to index legacy records for fast duplicate lookup.
+    """
+    global _INDEX_BOOTSTRAP_DONE
+    if _INDEX_BOOTSTRAP_DONE:
+        return
+
+    with _INDEX_BOOTSTRAP_LOCK:
+        if _INDEX_BOOTSTRAP_DONE:
+            return
+
+        logging.info("Bootstrapping podcast indexes for legacy records.")
+        indexed_count = 0
+        existing_ids = list_podcast_ids(include_legacy=True)
+        for pid in existing_ids:
+            blob_data, err = handle_blob_operation(
+                retry_with_backoff(
+                    lambda: load_podcast_blob(pid),
+                    exceptions=(RuntimeError,),
+                    max_attempts=1,
+                    initial_delay=0.0,
+                    backoff_factor=1.0,
+                )
+            )
+            if err or not blob_data:
+                continue
+            try:
+                pdata = json.loads(blob_data)
+            except Exception:
+                continue
+
+            title = pdata.get("title")
+            rss_url = pdata.get("rss_url")
+            if not title or not rss_url:
+                continue
+
+            try:
+                create_podcast_index("title", title, pid, overwrite=True)
+                create_podcast_index("rss", rss_url, pid, overwrite=True)
+                indexed_count += 1
+            except Exception as e:
+                logging.warning(f"Failed to bootstrap index for podcast_id={pid}: {e}")
+
+        _INDEX_BOOTSTRAP_DONE = True
+        logging.info(f"Podcast index bootstrap complete. indexed_count={indexed_count}")
+
 
 def initialize(req: func.HttpRequest) -> func.HttpResponse:
     """
@@ -69,45 +127,75 @@ def initialize(req: func.HttpRequest) -> func.HttpResponse:
     if not title or not rss_url:
         return error_response("Missing or invalid title or rss_url.", 400)
 
-    # Check for duplicate podcast by title or rss_url (optional, but good RESTful practice)
-    # This requires listing all blobs and checking their contents
     try:
-        existing_ids = list_podcast_ids(include_legacy=True)
-        for pid in existing_ids:
-            blob_data, err = handle_blob_operation(
-                retry_with_backoff(
-                    lambda: load_podcast_blob(pid),
-                    exceptions=(RuntimeError,),
-                    max_attempts=2,
-                    initial_delay=0.5,
-                    backoff_factor=2.0
-                )
-            )
-            if not err:
-                try:
-                    pdata = json.loads(blob_data)
-                    if pdata.get("title") == title or pdata.get("rss_url") == rss_url:
-                        return error_response("Podcast with this title or rss_url already exists.", 409)
-                except Exception:
-                    continue
+        _bootstrap_podcast_indexes_if_needed()
     except Exception as e:
-        logging.warning(f"Could not check for duplicates: {e}")
+        logging.warning(f"Could not bootstrap podcast indexes: {e}")
 
-    # Create podcast metadata JSON
+    try:
+        existing_by_title = get_podcast_id_from_index("title", title)
+        existing_by_rss = get_podcast_id_from_index("rss", rss_url)
+        if existing_by_title or existing_by_rss:
+            return error_response("Podcast with this title or rss_url already exists.", 409)
+    except Exception as e:
+        logging.error(f"Failed to read podcast indexes: {e}", exc_info=True)
+        return error_response("Failed to validate podcast uniqueness.", 500)
+
+    podcast_id = str(uuid.uuid4())
     podcast_metadata = json.dumps({"title": title, "rss_url": rss_url})
-
-    # Save the podcast metadata to Azure Blob Storage with retry
     save_start = time.time()
-    podcast_id, err = handle_blob_operation(
+    title_reserved = False
+    rss_reserved = False
+
+    try:
         retry_with_backoff(
-            lambda: save_podcast_blob(podcast_metadata),
+            lambda: create_podcast_index("title", title, podcast_id, overwrite=False),
             exceptions=(RuntimeError,),
             max_attempts=3,
-            initial_delay=1.0,
+            initial_delay=0.2,
+            backoff_factor=2.0,
+        )()
+        title_reserved = True
+
+        retry_with_backoff(
+            lambda: create_podcast_index("rss", rss_url, podcast_id, overwrite=False),
+            exceptions=(RuntimeError,),
+            max_attempts=3,
+            initial_delay=0.2,
+            backoff_factor=2.0,
+        )()
+        rss_reserved = True
+    except PodcastIndexConflictError:
+        if title_reserved:
+            try:
+                delete_podcast_index("title", title, expected_podcast_id=podcast_id)
+            except Exception:
+                pass
+        return error_response("Podcast with this title or rss_url already exists.", 409)
+    except Exception as e:
+        logging.error(f"Failed to reserve podcast indexes: {e}", exc_info=True)
+        return error_response("Failed to reserve podcast indexes.", 500)
+
+    _, err = handle_blob_operation(
+        retry_with_backoff(
+            lambda: save_podcast_blob(podcast_metadata, podcast_id),
+            exceptions=(RuntimeError,),
+            max_attempts=3,
+            initial_delay=0.5,
             backoff_factor=2.0,
         )
     )
     if err:
+        if title_reserved:
+            try:
+                delete_podcast_index("title", title, expected_podcast_id=podcast_id)
+            except Exception:
+                pass
+        if rss_reserved:
+            try:
+                delete_podcast_index("rss", rss_url, expected_podcast_id=podcast_id)
+            except Exception:
+                pass
         return error_response("Failed to create podcast.", 500)
     save_duration = time.time() - save_start
     logging.info(f"Podcast blob save completed in {save_duration:.2f} seconds.")
@@ -169,6 +257,20 @@ def podcast_resource(req: func.HttpRequest) -> func.HttpResponse:
             if req.method == "PUT":
                 if not title or not rss_url:
                     return error_response("Missing title or rss_url.", 400)
+                old_blob_data, old_err = handle_blob_operation(
+                    retry_with_backoff(
+                        lambda: load_podcast_blob(podcast_id),
+                        exceptions=(RuntimeError,),
+                        max_attempts=3,
+                        initial_delay=1.0,
+                        backoff_factor=2.0,
+                    )
+                )
+                if old_err:
+                    return error_response("Failed to load podcast data.", 404)
+                old_json_data = json.loads(old_blob_data)
+                old_title = old_json_data.get("title")
+                old_rss_url = old_json_data.get("rss_url")
                 json_data = {"title": title, "rss_url": rss_url}
             else:  # PATCH
                 blob_data, err = handle_blob_operation(
@@ -187,6 +289,34 @@ def podcast_resource(req: func.HttpRequest) -> func.HttpResponse:
                     json_data["title"] = title
                 if rss_url:
                     json_data["rss_url"] = rss_url
+                old_title = json.loads(blob_data).get("title")
+                old_rss_url = json.loads(blob_data).get("rss_url")
+
+            new_title = json_data.get("title")
+            new_rss_url = json_data.get("rss_url")
+            title_changed = bool(old_title and new_title and old_title != new_title)
+            rss_changed = bool(old_rss_url and new_rss_url and old_rss_url != new_rss_url)
+
+            title_reserved = False
+            rss_reserved = False
+            try:
+                if title_changed:
+                    create_podcast_index("title", new_title, podcast_id, overwrite=False)
+                    title_reserved = True
+                if rss_changed:
+                    create_podcast_index("rss", new_rss_url, podcast_id, overwrite=False)
+                    rss_reserved = True
+            except PodcastIndexConflictError:
+                if title_reserved:
+                    try:
+                        delete_podcast_index("title", new_title, expected_podcast_id=podcast_id)
+                    except Exception:
+                        pass
+                return error_response("Podcast with this title or rss_url already exists.", 409)
+            except Exception as e:
+                logging.error(f"Failed to reserve updated podcast indexes: {e}", exc_info=True)
+                return error_response("Failed to reserve updated podcast indexes.", 500)
+
             _, err = handle_blob_operation(
                 retry_with_backoff(
                     lambda: save_podcast_blob(json.dumps(json_data), podcast_id),
@@ -197,7 +327,29 @@ def podcast_resource(req: func.HttpRequest) -> func.HttpResponse:
                 )
             )
             if err:
+                if title_reserved:
+                    try:
+                        delete_podcast_index("title", new_title, expected_podcast_id=podcast_id)
+                    except Exception:
+                        pass
+                if rss_reserved:
+                    try:
+                        delete_podcast_index("rss", new_rss_url, expected_podcast_id=podcast_id)
+                    except Exception:
+                        pass
                 return error_response("Failed to save podcast data.", 500)
+
+            if title_changed:
+                try:
+                    delete_podcast_index("title", old_title, expected_podcast_id=podcast_id)
+                except Exception:
+                    logging.warning("Failed to delete old title index after update.", exc_info=True)
+            if rss_changed:
+                try:
+                    delete_podcast_index("rss", old_rss_url, expected_podcast_id=podcast_id)
+                except Exception:
+                    logging.warning("Failed to delete old rss index after update.", exc_info=True)
+
             return json_response({
                 "message": "Podcast updated successfully.",
                 "result": {
@@ -212,6 +364,25 @@ def podcast_resource(req: func.HttpRequest) -> func.HttpResponse:
 
     elif req.method == "DELETE":
         try:
+            blob_data, load_err = handle_blob_operation(
+                retry_with_backoff(
+                    lambda: load_podcast_blob(podcast_id),
+                    exceptions=(RuntimeError,),
+                    max_attempts=2,
+                    initial_delay=0.5,
+                    backoff_factor=2.0,
+                )
+            )
+            old_title = None
+            old_rss_url = None
+            if not load_err and blob_data:
+                try:
+                    old_json = json.loads(blob_data)
+                    old_title = old_json.get("title")
+                    old_rss_url = old_json.get("rss_url")
+                except Exception:
+                    pass
+
             _, err = handle_blob_operation(
                 retry_with_backoff(
                     lambda: delete_podcast_blob(podcast_id),
@@ -223,6 +394,18 @@ def podcast_resource(req: func.HttpRequest) -> func.HttpResponse:
             )
             if err:
                 return error_response("Failed to delete podcast.", 500)
+
+            if old_title:
+                try:
+                    delete_podcast_index("title", old_title, expected_podcast_id=podcast_id)
+                except Exception:
+                    logging.warning("Failed to delete title index during podcast delete.", exc_info=True)
+            if old_rss_url:
+                try:
+                    delete_podcast_index("rss", old_rss_url, expected_podcast_id=podcast_id)
+                except Exception:
+                    logging.warning("Failed to delete rss index during podcast delete.", exc_info=True)
+
             return json_response({
                 "message": "Podcast deleted successfully.",
                 "result": {"podcast_id": podcast_id}

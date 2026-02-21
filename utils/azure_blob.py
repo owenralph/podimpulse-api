@@ -1,14 +1,18 @@
 import uuid
 from azure.storage.blob import BlobServiceClient
-from azure.core.exceptions import ResourceNotFoundError
+from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
 import logging
 from utils.constants import BLOB_CONNECTION_STRING, BLOB_CONTAINER_NAME
-from typing import Optional, Union, List
+from typing import Optional, Union, List, Dict
 import re
+import hashlib
+import json
+from datetime import datetime, timezone
 
 blob_service_client = BlobServiceClient.from_connection_string(BLOB_CONNECTION_STRING)
 blob_container_client = blob_service_client.get_container_client(BLOB_CONTAINER_NAME)
 PODCAST_METADATA_PREFIX = "podcasts/"
+PODCAST_INDEX_PREFIX = "indexes/podcasts/v1/"
 _UUID_RE = re.compile(
     r"^[0-9a-fA-F]{8}-"
     r"[0-9a-fA-F]{4}-"
@@ -22,8 +26,40 @@ class BlobDecodeError(ValueError):
     """Raised when blob bytes cannot be decoded as UTF-8."""
 
 
+class PodcastIndexConflictError(ValueError):
+    """Raised when attempting to create an index entry that already exists."""
+
+    def __init__(self, index_name: str, value: str, existing_podcast_id: Optional[str] = None):
+        self.index_name = index_name
+        self.value = value
+        self.existing_podcast_id = existing_podcast_id
+        message = f"Index conflict for {index_name}='{value}'"
+        if existing_podcast_id:
+            message += f" (podcast_id={existing_podcast_id})"
+        super().__init__(message)
+
+
 def _is_uuid_like(value: str) -> bool:
     return bool(_UUID_RE.match(value or ""))
+
+
+def _normalize_index_value(value: str) -> str:
+    return " ".join((value or "").strip().lower().split())
+
+
+def _index_blob_name(index_name: str, value: str) -> str:
+    normalized = _normalize_index_value(value)
+    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    return f"{PODCAST_INDEX_PREFIX}{index_name}/{digest}.json"
+
+
+def _read_index_payload(index_name: str, value: str) -> Optional[Dict[str, str]]:
+    blob_name = _index_blob_name(index_name, value)
+    try:
+        payload = _download_blob_by_name(blob_name, binary=False)
+        return json.loads(payload)
+    except ResourceNotFoundError:
+        return None
 
 
 def _download_blob_by_name(blob_name: str, binary: bool = False) -> Union[str, bytes]:
@@ -199,6 +235,75 @@ def delete_podcast_blob(podcast_id: str) -> str:
     if last_error is not None:
         raise RuntimeError(f"Error deleting podcast blob for podcast_id {podcast_id}: {last_error}")
     raise RuntimeError(f"Podcast blob not found for podcast_id: {podcast_id}")
+
+
+def get_podcast_id_from_index(index_name: str, value: str) -> Optional[str]:
+    payload = _read_index_payload(index_name, value)
+    if not payload:
+        return None
+    return payload.get("podcast_id")
+
+
+def create_podcast_index(
+    index_name: str,
+    value: str,
+    podcast_id: str,
+    overwrite: bool = False,
+) -> None:
+    """
+    Creates (or overwrites) an index entry for podcast uniqueness checks.
+    """
+    try:
+        normalized = _normalize_index_value(value)
+        blob_name = _index_blob_name(index_name, value)
+        payload = {
+            "podcast_id": podcast_id,
+            "index_name": index_name,
+            "value": value,
+            "normalized_value": normalized,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        blob_client = blob_container_client.get_blob_client(blob_name)
+        blob_client.upload_blob(json.dumps(payload), overwrite=overwrite)
+    except ResourceExistsError:
+        existing = _read_index_payload(index_name, value) or {}
+        raise PodcastIndexConflictError(
+            index_name=index_name,
+            value=value,
+            existing_podcast_id=existing.get("podcast_id"),
+        )
+    except PodcastIndexConflictError:
+        raise
+    except Exception as e:
+        logging.error(f"Error creating podcast index {index_name}: {e}")
+        raise RuntimeError(f"Error creating podcast index {index_name}: {e}")
+
+
+def delete_podcast_index(
+    index_name: str,
+    value: str,
+    expected_podcast_id: Optional[str] = None,
+) -> bool:
+    """
+    Deletes an index entry. If expected_podcast_id is provided, deletes only when it matches.
+    """
+    blob_name = _index_blob_name(index_name, value)
+    try:
+        if expected_podcast_id:
+            existing = _read_index_payload(index_name, value)
+            if not existing:
+                return False
+            if existing.get("podcast_id") != expected_podcast_id:
+                return False
+        blob_client = blob_container_client.get_blob_client(blob_name)
+        blob_client.delete_blob()
+        return True
+    except ResourceNotFoundError:
+        return False
+    except Exception as e:
+        logging.error(f"Error deleting podcast index {index_name}: {e}")
+        raise RuntimeError(f"Error deleting podcast index {index_name}: {e}")
+
 
 def load_from_blob_storage(instance_id: str, binary: bool = False) -> Union[str, bytes]:
     """
