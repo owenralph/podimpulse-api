@@ -89,8 +89,6 @@ Required GitHub repository variables:
 - `AZURE_RESOURCE_GROUP`
 - `AZURE_FUNCTIONAPP_STAGING`
 - `AZURE_FUNCTIONAPP_PRODUCTION`
-
-Required GitHub repository secrets (OIDC service principal):
 - `AZURE_CLIENT_ID`
 - `AZURE_TENANT_ID`
 - `AZURE_SUBSCRIPTION_ID`
