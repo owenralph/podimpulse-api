@@ -15,7 +15,74 @@ import requests
 import io
 import pandas as pd
 import time
+from datetime import datetime, timezone
 from typing import Optional
+
+RSS_CACHE_KEY = "_rss_episode_cache"
+RSS_CACHE_TTL_SECONDS = 6 * 60 * 60
+RSS_CACHE_MAX_EPISODES = 5000
+
+
+def _episode_df_from_cache(cache_payload, allow_stale: bool = False) -> Optional[pd.DataFrame]:
+    if not isinstance(cache_payload, dict):
+        return None
+
+    fetched_at = cache_payload.get("fetched_at")
+    episodes = cache_payload.get("episodes")
+    if not isinstance(episodes, list) or not episodes:
+        return None
+
+    try:
+        fetched_at_ts = pd.to_datetime(fetched_at, utc=True, errors="coerce")
+    except Exception:
+        fetched_at_ts = pd.NaT
+
+    if pd.isna(fetched_at_ts):
+        return None
+
+    age_seconds = (datetime.now(timezone.utc) - fetched_at_ts.to_pydatetime()).total_seconds()
+    if not allow_stale and age_seconds > RSS_CACHE_TTL_SECONDS:
+        return None
+
+    df = pd.DataFrame(episodes)
+    if "Date" not in df.columns or "Title" not in df.columns:
+        return None
+
+    df["Date"] = pd.to_datetime(df["Date"], utc=True, errors="coerce")
+    df = df.dropna(subset=["Date"])
+    if df.empty:
+        return None
+
+    return df[["Date", "Title"]]
+
+
+def _update_episode_cache(json_data: dict, episode_data: pd.DataFrame) -> None:
+    if episode_data is None or episode_data.empty:
+        return
+
+    cache_df = episode_data.copy()
+    cache_df["Date"] = pd.to_datetime(cache_df["Date"], utc=True, errors="coerce")
+    cache_df = cache_df.dropna(subset=["Date"])
+    if cache_df.empty:
+        return
+
+    cache_df["Title"] = cache_df["Title"].fillna("").astype(str)
+    cache_df = cache_df[cache_df["Title"].str.strip() != ""]
+    if cache_df.empty:
+        return
+
+    cache_df = cache_df.drop_duplicates(subset=["Date", "Title"])
+    cache_df = cache_df.sort_values("Date").tail(RSS_CACHE_MAX_EPISODES)
+    records = [
+        {"Date": row["Date"].isoformat(), "Title": row["Title"]}
+        for _, row in cache_df.iterrows()
+    ]
+    if records:
+        json_data[RSS_CACHE_KEY] = {
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+            "episodes": records,
+        }
+
 
 def ingest(req: func.HttpRequest) -> func.HttpResponse:
     """
@@ -224,15 +291,35 @@ def ingest(req: func.HttpRequest) -> func.HttpResponse:
             "result": None
         }), status_code=400)
 
-    # Parse RSS feed
-    try:
-        episode_data = parse_rss_feed(rss_url)
-    except Exception as e:
-        logging.error(f"Failed to parse RSS feed: {e}", exc_info=True)
-        return func.HttpResponse(json.dumps({
-            "message": "Failed to parse RSS feed.",
-            "result": None
-        }), status_code=400)
+    # Parse RSS feed (use fresh cache when possible, fall back to stale cache on fetch failure)
+    episode_data = _episode_df_from_cache(json_data.get(RSS_CACHE_KEY))
+    if episode_data is not None:
+        logging.info("[metric] ingest.rss source=cache freshness=fresh")
+    else:
+        try:
+            rss_start = time.perf_counter()
+            episode_data = parse_rss_feed(rss_url)
+            rss_elapsed_ms = (time.perf_counter() - rss_start) * 1000
+            logging.info(
+                "[metric] ingest.rss source=network duration_ms=%.2f",
+                rss_elapsed_ms,
+            )
+            _update_episode_cache(json_data, episode_data)
+        except Exception as e:
+            stale_episode_data = _episode_df_from_cache(
+                json_data.get(RSS_CACHE_KEY),
+                allow_stale=True,
+            )
+            if stale_episode_data is not None:
+                logging.warning(f"RSS refresh failed; using stale cache: {e}")
+                episode_data = stale_episode_data
+                ingestion_warnings.append("RSS feed refresh failed; using cached episode metadata.")
+            else:
+                logging.error(f"Failed to parse RSS feed: {e}", exc_info=True)
+                return func.HttpResponse(json.dumps({
+                    "message": "Failed to parse RSS feed.",
+                    "result": None
+                }), status_code=400)
 
     # Add episode counts and titles to DataFrame
     try:
