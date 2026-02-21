@@ -37,7 +37,7 @@ def parse_rss_feed(rss_url: str) -> pd.DataFrame:
                 episode_data.append({"Date": localized_date, "Title": title})
         if not episode_data:
             logging.warning("No valid episodes found in the RSS feed.")
-        return pd.DataFrame(episode_data)
+        return pd.DataFrame(episode_data, columns=["Date", "Title"])
     except Exception as e:
         logging.error(f"Error parsing RSS feed: {e}")
         raise ValueError(f"Error parsing RSS feed: {e}")
