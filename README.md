@@ -19,6 +19,7 @@ Configure environment (for local execution):
 
 - `BLOB_CONNECTION_STRING` (required)
 - `FACEBOOK_APP_ID` and `FACEBOOK_APP_SECRET` (required for Facebook endpoints)
+- `TIKTOK_CLIENT_KEY` and `TIKTOK_CLIENT_SECRET` (required for TikTok endpoints)
 
 ## Authentication Policy
 
@@ -39,6 +40,16 @@ All HTTP endpoints require an Azure Functions key (`AuthLevel.FUNCTION`).
 - `GET /v1/podcasts/{podcast_id}/impact`
 
 Detailed schema is in `podimpulse.yaml`.
+
+Social connection endpoints:
+- `POST /v1/facebook/exchange_user_token`
+- `POST /v1/facebook/get_user_pages`
+- `POST /v1/facebook/get_page_token`
+- `POST /v1/facebook/query_page_analytics`
+- `POST /v1/tiktok/exchange_user_token`
+- `POST /v1/tiktok/get_user_accounts`
+- `POST /v1/tiktok/get_account_token`
+- `POST /v1/tiktok/query_account_analytics`
 
 ## Legacy Endpoints
 

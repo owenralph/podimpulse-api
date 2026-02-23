@@ -152,6 +152,37 @@ def query_page_analytics(req: func.HttpRequest) -> func.HttpResponse:
     return _invoke_with_metrics(req, "v1/facebook/query_page_analytics", query_page_analytics_handler)
 
 """""""""
+TikTok connection
+"""""""""
+@app.route(route="v1/tiktok/exchange_user_token", methods=["POST"])
+def tiktok_exchange_user_token(req: func.HttpRequest) -> func.HttpResponse:
+    exchange_user_token_handler = _resolve_handler(
+        "functions.v1.tiktok.token", "exchange_user_token"
+    )
+    return _invoke_with_metrics(req, "v1/tiktok/exchange_user_token", exchange_user_token_handler)
+
+@app.route(route="v1/tiktok/get_user_accounts", methods=["POST"])
+def tiktok_get_user_accounts(req: func.HttpRequest) -> func.HttpResponse:
+    get_user_accounts_handler = _resolve_handler(
+        "functions.v1.tiktok.accounts", "get_user_accounts"
+    )
+    return _invoke_with_metrics(req, "v1/tiktok/get_user_accounts", get_user_accounts_handler)
+
+@app.route(route="v1/tiktok/get_account_token", methods=["POST"])
+def tiktok_get_account_token(req: func.HttpRequest) -> func.HttpResponse:
+    get_account_token_handler = _resolve_handler("functions.v1.tiktok.token", "get_account_token")
+    return _invoke_with_metrics(req, "v1/tiktok/get_account_token", get_account_token_handler)
+
+@app.route(route="v1/tiktok/query_account_analytics", methods=["POST"])
+def tiktok_query_account_analytics(req: func.HttpRequest) -> func.HttpResponse:
+    query_account_analytics_handler = _resolve_handler(
+        "functions.v1.tiktok.analytics", "query_video_analytics"
+    )
+    return _invoke_with_metrics(
+        req, "v1/tiktok/query_account_analytics", query_account_analytics_handler
+    )
+
+"""""""""
 Podcasts
 """""""""
 # Podcasts collection endpoints

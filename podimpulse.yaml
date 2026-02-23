@@ -1084,6 +1084,309 @@ paths:
                   result:
                     type: object
 
+  /v1/tiktok/exchange_user_token:
+    post:
+      summary: Exchange a TikTok OAuth authorization code for a user access token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - auth_code
+                - redirect_uri
+              properties:
+                auth_code:
+                  type: string
+                  description: TikTok OAuth authorization code.
+                redirect_uri:
+                  type: string
+                  description: Redirect URI used in the TikTok OAuth flow.
+      responses:
+        '200':
+          description: Token exchanged successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+                  open_id:
+                    type: string
+                  scope:
+                    type: string
+                  expires_in:
+                    type: integer
+                  refresh_expires_in:
+                    type: integer
+        '400':
+          description: Invalid request body or missing required parameters.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '500':
+          description: Server-side error exchanging token.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '502':
+          description: TikTok API request failed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+
+  /v1/tiktok/get_user_accounts:
+    post:
+      summary: Get authenticated TikTok account(s) for a user token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_token
+              properties:
+                user_token:
+                  type: string
+                  description: TikTok user access token.
+      responses:
+        '200':
+          description: Accounts retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accounts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+        '400':
+          description: Invalid request body or missing required parameters.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '500':
+          description: Server-side error fetching accounts.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '502':
+          description: TikTok API request failed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+
+  /v1/tiktok/get_account_token:
+    post:
+      summary: Validate account identity and return an account token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_token
+                - account_id
+              properties:
+                user_token:
+                  type: string
+                  description: TikTok user access token.
+                account_id:
+                  type: string
+                  description: TikTok account ID (open_id) expected for the token.
+      responses:
+        '200':
+          description: Account token returned successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  account_id:
+                    type: string
+                  account_token:
+                    type: string
+        '400':
+          description: Invalid request body or missing required parameters.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '403':
+          description: Account ID does not match the authenticated user.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '500':
+          description: Server-side error fetching account token.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '502':
+          description: TikTok API request failed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+
+  /v1/tiktok/query_account_analytics:
+    post:
+      summary: Query TikTok video analytics for an authenticated account.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - account_token
+              properties:
+                account_token:
+                  type: string
+                  description: TikTok account access token.
+                max_count:
+                  type: integer
+                  description: Maximum number of videos to return (1-100).
+                  default: 20
+      responses:
+        '200':
+          description: Analytics retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  videos:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        create_time:
+                          type: integer
+                        title:
+                          type: string
+                        description:
+                          type: string
+                        insights:
+                          type: object
+                          properties:
+                            view_count:
+                              type: integer
+                            like_count:
+                              type: integer
+                            comment_count:
+                              type: integer
+                            share_count:
+                              type: integer
+        '400':
+          description: Invalid request body or missing required parameters.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '500':
+          description: Server-side error querying analytics.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+        '502':
+          description: TikTok API request failed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  result:
+                    type: object
+
 components:
   securitySchemes:
     functionKeyQuery:

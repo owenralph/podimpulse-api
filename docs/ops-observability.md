@@ -30,6 +30,11 @@ External HTTP calls include per-call metrics and hard timeouts:
   `facebook.get_page_token`,
   `facebook.get_user_pages`,
   `facebook.query_page_analytics`, timeout `10s`.
+- TikTok token/accounts/analytics: operations
+  `tiktok.exchange_user_token`,
+  `tiktok.get_account_token`,
+  `tiktok.get_user_accounts`,
+  `tiktok.query_account_analytics`, timeout `10s`.
 
 ## Recommended Alerts (Application Insights / Log Analytics)
 
