@@ -15,6 +15,14 @@ AZURITE_CONNECTION_STRING = (
     "AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;"
     "BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
 )
+STRICT_AZURITE_REQUIRED = os.getenv("AZURITE_REQUIRED", "").lower() in {"1", "true", "yes"}
+
+
+def _skip_or_fail_unreachable_azurite(exc: Exception) -> None:
+    message = f"Azurite is not reachable: {exc}"
+    if STRICT_AZURITE_REQUIRED:
+        raise RuntimeError(f"Azurite is required for this run. {message}") from exc
+    raise unittest.SkipTest(message)
 
 
 class FakeRequest:
@@ -44,7 +52,7 @@ class BlobAzuriteIntegrationTests(unittest.TestCase):
         try:
             sock.connect(("127.0.0.1", 10000))
         except Exception as exc:
-            raise unittest.SkipTest(f"Azurite is not reachable: {exc}")
+            _skip_or_fail_unreachable_azurite(exc)
         finally:
             sock.close()
 
@@ -56,7 +64,7 @@ class BlobAzuriteIntegrationTests(unittest.TestCase):
             except ResourceExistsError:
                 pass
         except Exception as exc:
-            raise unittest.SkipTest(f"Azurite is not reachable: {exc}")
+            _skip_or_fail_unreachable_azurite(exc)
 
         import utils.constants as constants
         import utils.azure_blob as azure_blob

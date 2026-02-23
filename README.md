@@ -17,7 +17,7 @@ pip install -r requirements.txt
 
 Configure environment (for local execution):
 
-- `BLOB_CONNECTION_STRING` (required)
+- `BLOB_CONNECTION_STRING` (required unless `AzureWebJobsStorage` is set)
 - `FACEBOOK_APP_ID` and `FACEBOOK_APP_SECRET` (required for Facebook endpoints)
 - `TIKTOK_CLIENT_KEY` and `TIKTOK_CLIENT_SECRET` (required for TikTok endpoints)
 
@@ -76,6 +76,7 @@ python -m unittest tests.test_blob_integration -v
 ```
 
 If Azurite is not running locally, the integration suite skips.
+Set `AZURITE_REQUIRED=1` to fail instead of skip when Azurite is unavailable (used in CI).
 
 ## CI
 
